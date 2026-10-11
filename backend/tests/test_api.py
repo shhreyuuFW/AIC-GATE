@@ -1,4 +1,5 @@
 
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from aic_gate.main import app
@@ -17,7 +18,7 @@ def test_valid_request_returns_created_session():
     response = client.post(
         "/requests",
         json={
-            "bucket": "aic-gate-lab",
+            "bucket": "cloudsec.proj.aicgate",
             "prefix": "logs/",
             "actions": ["s3:GetObject"],
             "duration_minutes": 30,
@@ -28,7 +29,7 @@ def test_valid_request_returns_created_session():
     assert response.status_code == 200
 
     body = response.json()
-    assert body["bucket"] == "aic-gate-lab"
+    assert body["bucket"] == "cloudsec.proj.aicgate"
     assert body["prefix"] == "logs/"
     assert body["actions"] == ["s3:GetObject"]
     assert body["status"] == "ACTIVE"
@@ -54,7 +55,7 @@ def test_retrieve_existing_session():
     create_response = client.post(
         "/requests",
         json={
-            "bucket": "aic-gate-lab",
+            "bucket": "cloudsec.proj.aicgate",
             "prefix": "logs/",
             "actions": ["s3:GetObject"],
             "duration_minutes": 30,
@@ -80,7 +81,7 @@ def test_revoke_existing_session():
     create_response = client.post(
         "/requests",
         json={
-            "bucket": "aic-gate-lab",
+            "bucket": "cloudsec.proj.aicgate",
             "prefix": "logs/",
             "actions": ["s3:GetObject"],
             "duration_minutes": 30,
@@ -100,5 +101,41 @@ def test_revoke_existing_session():
 
 def test_revoke_unknown_session_returns_404():
     response = client.post("/sessions/nonexistent-session/revoke")
+
+    assert response.status_code == 404
+
+
+def test_read_object_endpoint_success():
+    # Create a valid session through the API first.
+    response = client.post(
+        "/requests",
+        json={
+            "bucket": "cloudsec.proj.aicgate",
+            "prefix": "logs/",
+            "actions": ["s3:GetObject"],
+            "duration_minutes": 15,
+            "reason": "Test API object read",
+        },
+    )
+    assert response.status_code == 200
+    session_id = response.json()["session_id"]
+
+    with patch(
+        "aic_gate.main.read_session_object",
+        return_value="Synthetic log content",
+    ):
+        response = client.get(
+            f"/sessions/{session_id}/objects",
+            params={"key": "logs/sample.log"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["content"] == "Synthetic log content"
+
+def test_read_object_endpoint_unknown_session():
+    response = client.get(
+        "/sessions/does-not-exist/objects",
+        params={"key": "logs/sample.log"},
+    )
 
     assert response.status_code == 404

@@ -1,5 +1,6 @@
 
 from fastapi import FastAPI, HTTPException
+from aic_gate.service import read_session_object
 from pydantic import BaseModel
 from aic_gate.validation import AccessRequest
 from aic_gate.service import (
@@ -86,4 +87,20 @@ def revoke_session_endpoint(session_id: str):
     return {
         "session_id": session.session_id,
         "status": session.status,
+    }
+
+
+@app.get("/sessions/{session_id}/objects")
+def read_object(session_id: str, key: str):
+    try:
+        content = read_session_object(session_id, key)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    return {
+        "session_id": session_id,
+        "key": key,
+        "content": content,
     }

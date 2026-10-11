@@ -6,7 +6,7 @@ from aic_gate.validation import AccessRequest, validate_request
 
 def valid_request(**overrides):
     values = {
-        "bucket": "aic-gate-lab",
+        "bucket": "cloudsec.proj.aicgate",
         "prefix": "logs/",
         "actions": ["s3:GetObject"],
         "duration_minutes": 15,

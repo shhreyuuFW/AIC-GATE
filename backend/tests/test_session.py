@@ -20,7 +20,7 @@ def make_session(
 
     return AccessSession(
         session_id="test-session-001",
-        bucket="aic-gate-lab",
+        bucket="cloudsec.proj.aicgate",
         prefix="logs/",
         actions=["s3:GetObject"],
         created_at=now,
@@ -57,7 +57,7 @@ def test_create_session_sets_expiry_and_starts_active():
     now = datetime.now(timezone.utc)
 
     request = AccessRequest(
-        bucket="aic-gate-lab",
+        bucket="cloudsec.proj.aicgate",
         prefix="logs/",
         actions=["s3:GetObject"],
         duration_minutes=30,
@@ -67,7 +67,7 @@ def test_create_session_sets_expiry_and_starts_active():
     session = create_session(request, now)
 
     assert session.session_id
-    assert session.bucket == "aic-gate-lab"
+    assert session.bucket == "cloudsec.proj.aicgate"
     assert session.prefix == "logs/"
     assert session.actions == ["s3:GetObject"]
     assert session.created_at == now
@@ -96,7 +96,7 @@ def test_revoked_session_stays_revoked_before_expiry():
 
 def make_request(**overrides) -> AccessRequest:
     values = {
-        "bucket": "aic-gate-lab",
+        "bucket": "cloudsec.proj.aicgate",
         "prefix": "logs/",
         "actions": ["s3:GetObject"],
         "duration_minutes": 30,

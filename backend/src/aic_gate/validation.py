@@ -34,7 +34,7 @@ def validate_request(request: AccessRequest) -> None:
         raise ValueError("Invalid bucket name.")
 
     # Only explicitly configured lab buckets may be accessed.
-    if request.bucket != "aic-gate-lab":
+    if request.bucket != "cloudsec.proj.aicgate":
         raise ValueError("Bucket is not allowlisted.")
 
     if not isinstance(request.prefix, str) or not request.prefix.strip():
