@@ -1,4 +1,7 @@
 
+from aic_gate.session import AccessSession
+from aic_gate.service import submit_access_request
+import pytest
 from aic_gate.session import revoke_session
 from aic_gate.validation import AccessRequest
 from datetime import datetime, timedelta, timezone
@@ -89,3 +92,34 @@ def test_revoked_session_stays_revoked_before_expiry():
     revoke_session(session)
 
     assert get_session_status(session, now) == "REVOKED"
+
+
+def make_request(**overrides) -> AccessRequest:
+    values = {
+        "bucket": "aic-gate-lab",
+        "prefix": "logs/",
+        "actions": ["s3:GetObject"],
+        "duration_minutes": 30,
+        "reason": "Testing the service",
+    }
+    values.update(overrides)
+    return AccessRequest(**values)
+
+
+def test_valid_request_creates_session():
+    request = make_request()
+
+    session = submit_access_request(request)
+
+    assert isinstance(session, AccessSession)
+    assert session.bucket == request.bucket
+    assert session.prefix == request.prefix
+    assert session.actions == request.actions
+    assert session.status == "ACTIVE"
+
+
+def test_invalid_request_does_not_create_session():
+    request = make_request(bucket="unauthorized-bucket")
+
+    with pytest.raises(ValueError):
+        submit_access_request(request)
