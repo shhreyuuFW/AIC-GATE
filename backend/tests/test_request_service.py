@@ -228,3 +228,36 @@ def test_approved_request_can_create_session():
 
     assert result == expected_result
     create_session.assert_called_once()
+
+
+def test_approved_request_cannot_create_session_twice():
+    from unittest.mock import patch
+    import pytest
+
+    record = {
+        "request_id": "request-test-123",
+        "status": "APPROVED",
+        "bucket": "cloudsec.proj.aicgate",
+        "prefix": "logs/",
+        "actions": ["s3:GetObject"],
+        "duration_minutes": 15,
+        "reason": "Test approval gate",
+    }
+
+    with (
+        patch(
+            "aic_gate.request_service.load_access_request",
+            return_value=record,
+        ),
+        patch(
+            "aic_gate.request_store.claim_approved_request",
+            return_value=False,
+        ),
+        patch(
+            "aic_gate.service.submit_approved_access_session",
+        ) as create_session,
+    ):
+        with pytest.raises(ValueError):
+            create_approved_session("request-test-123")
+
+    create_session.assert_not_called()
