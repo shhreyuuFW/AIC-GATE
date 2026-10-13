@@ -9,6 +9,7 @@ from aic_gate.request_store import (
     load_access_request,
     save_access_request,
     update_access_request,
+    claim_approved_request,
 )
 from aic_gate.validation import AccessRequest
 from aic_gate.service import submit_approved_access_session
@@ -79,8 +80,13 @@ def review_access_request(
 
 
 def create_approved_session(request_id: str):
-    """Create a session only for an approved access request."""
+    """Claim an approved request and create its linked session."""
     from aic_gate.service import submit_approved_access_session
+    from aic_gate.validation import AccessRequest
+    from aic_gate.request_store import (
+        claim_approved_request,
+        record_created_session,
+    )
 
     record = load_access_request(request_id)
 
@@ -92,6 +98,11 @@ def create_approved_session(request_id: str):
             "Access request must be approved before session creation."
         )
 
+    if not claim_approved_request(request_id):
+        raise ValueError(
+            "This request is already being processed or has been used."
+        )
+
     request = AccessRequest(
         bucket=record["bucket"],
         prefix=record["prefix"],
@@ -100,7 +111,16 @@ def create_approved_session(request_id: str):
         reason=record["reason"],
     )
 
-    return submit_approved_access_session(
+    session, credentials = submit_approved_access_session(
         request,
         request_id=request_id,
     )
+
+    if not record_created_session(request_id, session.session_id):
+        # Do not return credentials if we cannot record the linkage.
+        # Issued STS credentials may remain valid until they expire.
+        raise RuntimeError(
+            "Session was created, but its request linkage could not be saved."
+        )
+
+    return session, credentials

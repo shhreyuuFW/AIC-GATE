@@ -147,3 +147,53 @@ def create_approved_session(request_id: str):
         request,
         request_id=request_id,
     )
+
+
+def claim_approved_request(request_id: str) -> bool:
+    """Atomically claim an approved request for session creation."""
+    from botocore.exceptions import ClientError
+
+    try:
+        get_access_requests_table().update_item(
+            Key={"request_id": request_id},
+            UpdateExpression="SET #status = :creating",
+            ConditionExpression="#status = :approved",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={
+                ":approved": "APPROVED",
+                ":creating": "CREATING_SESSION",
+            },
+        )
+        return True
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == (
+            "ConditionalCheckFailedException"
+        ):
+            return False
+        raise
+
+
+def record_created_session(request_id: str, session_id: str) -> bool:
+    """Link a successfully created session to its approved request."""
+    try:
+        get_access_requests_table().update_item(
+            Key={"request_id": request_id},
+            UpdateExpression=(
+                "SET #status = :created, session_id = :session_id"
+            ),
+            ConditionExpression="#status = :creating",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={
+                ":creating": "CREATING_SESSION",
+                ":created": "SESSION_CREATED",
+                ":session_id": session_id,
+            },
+        )
+        return True
+
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == (
+            "ConditionalCheckFailedException"
+        ):
+            return False
+        raise

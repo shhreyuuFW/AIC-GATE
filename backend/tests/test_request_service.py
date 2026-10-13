@@ -203,7 +203,8 @@ def test_approved_request_can_create_session():
         "reason": "Test approval gate",
     }
 
-    expected_result = ("mock-session", {"access_key_id": "test"})
+    expected_session = type("MockSession", (), {"session_id": "session-test-123"})()
+    expected_result = (expected_session, {"access_key_id": "test"})
 
     with (
         patch(
@@ -214,6 +215,14 @@ def test_approved_request_can_create_session():
             "aic_gate.service.submit_approved_access_session",
             return_value=expected_result,
         ) as create_session,
+        patch(
+            "aic_gate.request_store.claim_approved_request",
+            return_value=True,
+        ),
+        patch(
+            "aic_gate.request_store.record_created_session",
+            return_value=True,
+        ),
     ):
         result = create_approved_session("request-test-123")
 
