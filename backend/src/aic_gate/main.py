@@ -1,25 +1,33 @@
 
+from datetime import datetime
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
-from aic_gate.service import read_session_object
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
 from aic_gate.validation import AccessRequest
+from aic_gate.request_service import (
+    submit_access_request_record,
+    get_access_request_record,
+    list_access_request_records,
+    review_access_request,
+)
 from aic_gate.service import (
     get_current_session_status,
     get_session,
     revoke_access_session,
-    submit_access_request,
     issue_session_credentials,
-    submit_access_request_with_credentials
+    read_session_object,
 )
-from pathlib import Path
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(
     title="AIC-Gate",
     description="Automated Identity Controller and Just-in-Time Gateway",
     version="0.1.0",
 )
+
 FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 
 app.mount(
@@ -28,12 +36,46 @@ app.mount(
     name="static",
 )
 
+# TEMPORARY LOCAL-DEVELOPMENT IDENTITIES ONLY.
+# Replace with identities from verified authentication before deployment.
+DEV_REQUESTER_ID = "local-dev-user"
+DEV_ADMIN_ID = "local-dev-admin"
+
+
 class AccessRequestBody(BaseModel):
     bucket: str
     prefix: str
     actions: list[str]
     duration_minutes: int
     reason: str
+
+
+class ReviewBody(BaseModel):
+    decision: str
+
+
+def request_to_dict(record):
+    """Serialize a request dataclass or DynamoDB item."""
+    if isinstance(record, dict):
+        return record
+
+    return {
+        "request_id": record.request_id,
+        "requester_id": record.requester_id,
+        "bucket": record.bucket,
+        "prefix": record.prefix,
+        "actions": record.actions,
+        "duration_minutes": record.duration_minutes,
+        "reason": record.reason,
+        "status": record.status,
+        "created_at": record.created_at.isoformat(),
+        "reviewed_at": (
+            record.reviewed_at.isoformat()
+            if record.reviewed_at
+            else None
+        ),
+        "reviewed_by": record.reviewed_by,
+    }
 
 
 @app.get("/health")
@@ -46,7 +88,7 @@ def frontend():
     return FileResponse(FRONTEND_DIR / "index.html")
 
 
-@app.post("/requests")
+@app.post("/requests", status_code=201)
 def submit_request(body: AccessRequestBody):
     request = AccessRequest(
         bucket=body.bucket,
@@ -57,33 +99,81 @@ def submit_request(body: AccessRequestBody):
     )
 
     try:
-        session, credentials = submit_access_request_with_credentials(
-            request
+        record = submit_access_request_record(
+            request,
+            requester_id=DEV_REQUESTER_ID,
         )
+        return request_to_dict(record)
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to submit access request",
+        ) from exc
+
+
+@app.get("/requests/{request_id}")
+def retrieve_access_request(request_id: str):
+    try:
+        record = get_access_request_record(request_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to retrieve access request",
+        ) from exc
+
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Access request not found",
+        )
+
+    # Local-development placeholder. Enforce real ownership using
+    # the authenticated principal before public deployment.
+    data = request_to_dict(record)
+    if data.get("requester_id") != DEV_REQUESTER_ID:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return data
+
+
+@app.get("/admin/requests")
+def admin_list_requests(status: str | None = None):
+    try:
+        records = list_access_request_records(status=status)
+        return {"requests": [request_to_dict(item) for item in records]}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        # Do not expose AWS internals or credential material in errors.
         raise HTTPException(
             status_code=502,
-            detail="Unable to create access session",
+            detail="Unable to list access requests",
         ) from exc
 
-    return {
-        "session_id": session.session_id,
-        "bucket": session.bucket,
-        "prefix": session.prefix,
-        "actions": session.actions,
-        "created_at": session.created_at.isoformat(),
-        "expires_at": session.expires_at.isoformat(),
-        "status": session.status,
-        "credentials": {
-            "access_key_id": credentials["access_key_id"],
-            "secret_access_key": credentials["secret_access_key"],
-            "session_token": credentials["session_token"],
-            "expires_at": credentials["expires_at"].isoformat(),
-        },
-    }
+
+@app.post("/admin/requests/{request_id}/review")
+def admin_review_request(request_id: str, body: ReviewBody):
+    try:
+        record = review_access_request(
+            request_id=request_id,
+            decision=body.decision,
+            reviewer_id=DEV_ADMIN_ID,
+        )
+        return request_to_dict(record)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to review access request",
+        ) from exc
 
 
 @app.get("/sessions/{session_id}")
@@ -146,7 +236,6 @@ def issue_credentials(session_id: str):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        # Do not return AWS internals or credentials in an error response.
         raise HTTPException(
             status_code=502,
             detail="Unable to issue temporary credentials",

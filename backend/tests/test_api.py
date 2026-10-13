@@ -1,4 +1,6 @@
 
+from types import SimpleNamespace
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
@@ -14,26 +16,47 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
-def test_valid_request_returns_created_session():
-    response = client.post(
-        "/requests",
-        json={
-            "bucket": "cloudsec.proj.aicgate",
-            "prefix": "logs/",
-            "actions": ["s3:GetObject"],
-            "duration_minutes": 30,
-            "reason": "Testing API request",
-        },
-    )
+def test_valid_request_creates_pending_request():
+    pending_request = {
+        "request_id": "request-test-123",
+        "requester_id": "local-dev-user",
+        "bucket": "cloudsec.proj.aicgate",
+        "prefix": "logs/",
+        "actions": ["s3:GetObject"],
+        "duration_minutes": 30,
+        "reason": "Testing API request",
+        "status": "PENDING",
+        "created_at": "2026-10-14T12:00:00+00:00",
+        "reviewed_at": None,
+        "reviewed_by": None,
+    }
 
-    assert response.status_code == 200
+    from unittest.mock import patch
+
+    with patch(
+        "aic_gate.main.submit_access_request_record",
+        return_value=pending_request,
+    ) as submit:
+        response = client.post(
+            "/requests",
+            json={
+                "bucket": "cloudsec.proj.aicgate",
+                "prefix": "logs/",
+                "actions": ["s3:GetObject"],
+                "duration_minutes": 30,
+                "reason": "Testing API request",
+            },
+        )
+
+    assert response.status_code == 201
 
     body = response.json()
-    assert body["bucket"] == "cloudsec.proj.aicgate"
-    assert body["prefix"] == "logs/"
-    assert body["actions"] == ["s3:GetObject"]
-    assert body["status"] == "ACTIVE"
-    assert body["session_id"]
+    assert body["request_id"] == "request-test-123"
+    assert body["status"] == "PENDING"
+    assert "session_id" not in body
+    assert "credentials" not in body
+
+    submit.assert_called_once()
 
 
 def test_invalid_request_returns_400():
@@ -139,3 +162,61 @@ def test_read_object_endpoint_unknown_session():
     )
 
     assert response.status_code == 404
+
+
+def make_active_session():
+    now = datetime.now(timezone.utc)
+    return SimpleNamespace(
+        session_id="session-test-123",
+        bucket="cloudsec.proj.aicgate",
+        prefix="logs/",
+        actions=["s3:GetObject"],
+        created_at=now,
+        expires_at=now + timedelta(minutes=30),
+        status="ACTIVE",
+    )
+
+
+def test_retrieve_existing_session():
+    session = make_active_session()
+
+    with (
+        patch("aic_gate.main.get_session", return_value=session),
+        patch(
+            "aic_gate.main.get_current_session_status",
+            return_value="ACTIVE",
+        ),
+    ):
+        response = client.get("/sessions/session-test-123")
+
+    assert response.status_code == 200
+    assert response.json()["session_id"] == "session-test-123"
+    assert response.json()["status"] == "ACTIVE"
+
+
+def test_revoke_existing_session():
+    session = make_active_session()
+    session.status = "REVOKED"
+
+    with patch(
+        "aic_gate.main.revoke_access_session",
+        return_value=session,
+    ):
+        response = client.post("/sessions/session-test-123/revoke")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "REVOKED"
+
+
+def test_read_object_endpoint_success():
+    with patch(
+        "aic_gate.main.read_session_object",
+        return_value="Synthetic log content",
+    ):
+        response = client.get(
+            "/sessions/session-test-123/objects",
+            params={"key": "logs/sample.log"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["content"] == "Synthetic log content"
