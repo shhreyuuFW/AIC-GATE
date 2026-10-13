@@ -1,0 +1,322 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#101827">
+  <title>AIC-GATE | JIT Access Control</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#">
+        <div class="brand-mark">A</div>
+        <div>
+          <strong>AIC-GATE</strong>
+          <span>Just-in-Time Access</span>
+        </div>
+      </a>
+
+      <nav class="navigation" aria-label="Main navigation">
+        <a class="nav-link active" href="#overview" data-view="overview">
+          <span>◫</span> Overview
+        </a>
+        <a class="nav-link" href="#requests" data-view="requests">
+          <span>＋</span> Access Requests
+        </a>
+        <a class="nav-link" href="#sessions" data-view="sessions">
+          <span>◷</span> Sessions
+        </a>
+        <a class="nav-link" href="#object-reader" data-view="object-reader">
+          <span>▤</span> S3 Object Reader
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span id="api-indicator" class="status-dot"></span>
+        <div>
+          <strong id="api-status">Checking API…</strong>
+          <span>FastAPI backend</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">CLOUD SECURITY / ACCESS CONTROL</p>
+          <h1 id="page-title">Overview</h1>
+          <p id="page-description" class="muted">
+            Manage temporary access to approved AWS resources.
+          </p>
+        </div>
+        <button id="refresh-button" class="button secondary" type="button">
+          ↻ Refresh
+        </button>
+      </header>
+
+      <div id="notice" class="notice hidden" role="status" aria-live="polite"></div>
+
+      <section id="view-overview" class="view">
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span class="stat-label">Total sessions</span>
+            <strong id="stat-total">—</strong>
+            <span class="stat-caption">Stored session records</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Active sessions</span>
+            <strong id="stat-active">—</strong>
+            <span class="stat-caption">Currently valid sessions</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Expired sessions</span>
+            <strong id="stat-expired">—</strong>
+            <span class="stat-caption">Past their expiry time</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Revoked sessions</span>
+            <strong id="stat-revoked">—</strong>
+            <span class="stat-caption">Marked as revoked</span>
+          </article>
+        </div>
+
+        <div class="content-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Create an access request</h2>
+                <p class="muted">Request temporary, scoped S3 access.</p>
+              </div>
+              <span class="icon-tile">＋</span>
+            </div>
+
+            <form id="request-form">
+              <div class="field">
+                <label for="bucket">S3 bucket</label>
+                <input id="bucket" name="bucket"
+                  value="cloudsec.proj.aicgate" required>
+              </div>
+
+              <div class="field">
+                <label for="prefix">Authorized prefix</label>
+                <input id="prefix" name="prefix"
+                  value="logs/" required>
+                <small>Example: logs/</small>
+              </div>
+
+              <fieldset class="field">
+                <legend>Requested actions</legend>
+                <label class="check-option">
+                  <input type="checkbox" name="actions"
+                    value="s3:GetObject" checked>
+                  Read objects (s3:GetObject)
+                </label>
+                <label class="check-option">
+                  <input type="checkbox" name="actions"
+                    value="s3:ListBucket" checked>
+                  List objects (s3:ListBucket)
+                </label>
+              </fieldset>
+
+              <div class="field">
+                <label for="duration">Duration</label>
+                <select id="duration" name="duration_minutes">
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="45">45 minutes</option>
+                  <option value="60">60 minutes</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="reason">Reason for access</label>
+                <textarea id="reason" name="reason" rows="3"
+                  maxlength="300" required
+                  placeholder="e.g. Read application logs for security testing"></textarea>
+              </div>
+
+              <div class="button-row">
+                <button class="button primary" type="submit">
+                  Create session
+                </button>
+                <button class="button secondary" id="create-with-credentials"
+                  type="button">
+                  Create + credentials
+                </button>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Security model</h2>
+                <p class="muted">How AIC-GATE manages access.</p>
+              </div>
+              <span class="icon-tile blue">⌑</span>
+            </div>
+
+            <div class="feature-list">
+              <div class="feature-item">
+                <span class="feature-number">01</span>
+                <div>
+                  <strong>Validate</strong>
+                  <p>Check the requested bucket, prefix, actions and duration.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <span class="feature-number">02</span>
+                <div>
+                  <strong>Issue temporary access</strong>
+                  <p>Use AWS STS and scoped session permissions.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <span class="feature-number">03</span>
+                <div>
+                  <strong>Track the session</strong>
+                  <p>Store session metadata and status in DynamoDB.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="info-banner">
+              <strong>Lab environment</strong>
+              <p>Use synthetic objects and verify both permitted and denied access.</p>
+            </div>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Recent sessions</h2>
+              <p class="muted">Review existing access sessions.</p>
+            </div>
+            <button class="button secondary" type="button"
+              data-go="sessions">View all</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Session ID</th>
+                  <th>Prefix</th>
+                  <th>Status</th>
+                  <th>Expires at</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="recent-sessions">
+                <tr><td colspan="5" class="empty-state">
+                  Refresh to load sessions.
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="view-requests" class="view hidden">
+        <article class="panel">
+          <h2>Access requests</h2>
+          <p class="muted">Use the request form on the Overview page to create a session.</p>
+          <button class="button primary" data-go="overview" type="button">
+            Create request
+          </button>
+        </article>
+      </section>
+
+      <section id="view-sessions" class="view hidden">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Session management</h2>
+              <p class="muted">Inspect status, expiry, and available actions.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Session ID</th>
+                  <th>Bucket</th>
+                  <th>Prefix</th>
+                  <th>Status</th>
+                  <th>Expires at</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="all-sessions">
+                <tr><td colspan="6" class="empty-state">
+                  Sessions will appear here.
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2>Selected session</h2>
+          <p id="selected-session-details" class="muted">
+            Select a session from the table to inspect it.
+          </p>
+          <div class="button-row">
+            <button id="issue-credentials" class="button primary" type="button">
+              Issue credentials
+            </button>
+            <button id="revoke-session" class="button danger" type="button">
+              Revoke session
+            </button>
+          </div>
+          <div id="credential-result" class="result-box hidden"></div>
+        </article>
+      </section>
+
+      <section id="view-object-reader" class="view hidden">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>S3 object reader</h2>
+              <p class="muted">Read an object through an existing access session.</p>
+            </div>
+            <span class="icon-tile blue">▤</span>
+          </div>
+
+          <form id="object-form">
+            <div class="field">
+              <label for="object-session">Session</label>
+              <select id="object-session" required>
+                <option value="">Select a session</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="object-key">Full S3 object key</label>
+              <input id="object-key" value="logs/sample.log" required>
+              <small>Enter the full key, including the prefix.</small>
+            </div>
+            <button class="button primary" type="submit">Read object</button>
+          </form>
+
+          <div id="object-result" class="result-box hidden">
+            <div class="panel-heading">
+              <h3>Object content / result</h3>
+              <button id="copy-object" class="button secondary"
+                type="button">Copy</button>
+            </div>
+            <pre id="object-content"></pre>
+          </div>
+        </article>
+      </section>
+
+      <footer class="page-footer">
+        AIC-GATE · Cloud security prototype · Local lab environment
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

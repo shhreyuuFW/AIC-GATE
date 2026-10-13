@@ -11,6 +11,7 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
+    "boto3",
 ]
 
 [project.optional-dependencies]

@@ -36,19 +36,22 @@ def create_session(
         status="ACTIVE",
     )
 
+
 def get_session_status(
     session: AccessSession,
     now: datetime | None = None,
 ) -> SessionStatus:
-    if session.status == "REVOKED":
-        return "REVOKED"
+    # Terminal states must never become ACTIVE again.
+    if session.status in ("REVOKED", "EXPIRED"):
+        return session.status
 
-    current_time = now or datetime.now().astimezone()
+    current_time = now or datetime.now(timezone.utc)
 
     if current_time >= session.expires_at:
         return "EXPIRED"
 
     return "ACTIVE"
+
 
 def revoke_session(session: AccessSession) -> AccessSession:
     session.status = "REVOKED"
