@@ -220,3 +220,55 @@ def test_read_object_endpoint_success():
 
     assert response.status_code == 200
     assert response.json()["content"] == "Synthetic log content"
+
+
+def test_create_session_from_approved_request():
+    session = make_active_session()
+    session.request_id = "request-123"
+
+    credentials = {
+        "access_key_id": "TEST_ACCESS_KEY",
+        "secret_access_key": "TEST_SECRET_KEY",
+        "session_token": "TEST_SESSION_TOKEN",
+        "expires_at": session.expires_at,
+    }
+
+    with patch(
+        "aic_gate.main.create_approved_session",
+        return_value=(session, credentials),
+    ):
+        response = client.post(
+            "/admin/requests/request-123/create-session"
+        )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["request_id"] == "request-123"
+    assert body["status"] == "ACTIVE"
+    assert body["credentials"]["access_key_id"] == "TEST_ACCESS_KEY"
+
+
+def test_create_session_from_pending_request_is_forbidden():
+    with patch(
+        "aic_gate.main.create_approved_session",
+        side_effect=PermissionError(
+            "Access request must be approved before session creation."
+        ),
+    ):
+        response = client.post(
+            "/admin/requests/request-123/create-session"
+        )
+
+    assert response.status_code == 403
+
+
+def test_create_session_for_unknown_request_returns_404():
+    with patch(
+        "aic_gate.main.create_approved_session",
+        side_effect=LookupError("Access request not found."),
+    ):
+        response = client.post(
+            "/admin/requests/missing/create-session"
+        )
+
+    assert response.status_code == 404

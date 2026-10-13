@@ -195,3 +195,73 @@ def read_session_object(
         raise PermissionError("Object is outside the authorized prefix")
 
     return read_s3_object(session.bucket, key)
+
+
+def submit_approved_access_session(
+    request: AccessRequest,
+    request_id: str,
+) -> tuple[AccessSession, dict]:
+    """Create a session linked to an approved access request."""
+    if not request_id or not request_id.strip():
+        raise ValueError("An approved request ID is required.")
+
+    validate_request(request)
+    session = create_session(request, request_id=request_id)
+
+    duration_seconds = request.duration_minutes * 60
+    credentials = assume_jit_role(
+        session,
+        duration_seconds=duration_seconds,
+    )
+
+    credential_expiry = credentials["expires_at"]
+    if credential_expiry.tzinfo is None:
+        credential_expiry = credential_expiry.replace(
+            tzinfo=timezone.utc
+        )
+
+    session.expires_at = credential_expiry
+    session.created_at = credential_expiry - timedelta(
+        seconds=duration_seconds
+    )
+
+    # Save the session before returning credentials.
+    save_session(session)
+    _sessions[session.session_id] = session
+
+    return session, credentials
+
+
+def submit_approved_access_session(
+    request: AccessRequest,
+    request_id: str,
+) -> tuple[AccessSession, dict]:
+    """Create a session linked to an approved request."""
+    if not request_id or not request_id.strip():
+        raise ValueError("An approved request ID is required.")
+
+    validate_request(request)
+    session = create_session(request, request_id=request_id)
+
+    duration_seconds = request.duration_minutes * 60
+    credentials = assume_jit_role(
+        session,
+        duration_seconds=duration_seconds,
+    )
+
+    credential_expiry = credentials["expires_at"]
+    if credential_expiry.tzinfo is None:
+        credential_expiry = credential_expiry.replace(
+            tzinfo=timezone.utc
+        )
+
+    session.expires_at = credential_expiry
+    session.created_at = credential_expiry - timedelta(
+        seconds=duration_seconds
+    )
+
+    # Persist before returning credentials to the caller.
+    save_session(session)
+    _sessions[session.session_id] = session
+
+    return session, credentials

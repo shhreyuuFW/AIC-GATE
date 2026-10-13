@@ -58,4 +58,5 @@ def load_access_session(session_id: str) -> AccessSession | None:
         created_at=datetime.fromisoformat(item["created_at"]),
         expires_at=datetime.fromisoformat(item["expires_at"]),
         status=item["status"],
+        request_id=item.get("request_id"),
     )

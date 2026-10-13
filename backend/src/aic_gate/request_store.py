@@ -118,3 +118,32 @@ def list_access_requests(status: str | None = None):
         key=lambda item: item.get("created_at", ""),
         reverse=True,
     )
+
+
+def create_approved_session(request_id: str):
+    """Create and persist a session for an approved request."""
+    from aic_gate.service import submit_approved_access_session
+    from aic_gate.validation import AccessRequest
+
+    record = load_access_request(request_id)
+
+    if record is None:
+        raise LookupError("Access request not found.")
+
+    if record.get("status") != "APPROVED":
+        raise PermissionError(
+            "Access request must be approved before session creation."
+        )
+
+    request = AccessRequest(
+        bucket=record["bucket"],
+        prefix=record["prefix"],
+        actions=record["actions"],
+        duration_minutes=int(record["duration_minutes"]),
+        reason=record["reason"],
+    )
+
+    return submit_approved_access_session(
+        request,
+        request_id=request_id,
+    )

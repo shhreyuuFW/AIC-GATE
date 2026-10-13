@@ -11,7 +11,8 @@ from aic_gate.request_store import (
     update_access_request,
 )
 from aic_gate.validation import AccessRequest
-
+from aic_gate.service import submit_approved_access_session
+from aic_gate.validation import AccessRequest
 
 VALID_DECISIONS = {"APPROVED", "REJECTED"}
 
@@ -75,3 +76,31 @@ def review_access_request(
         )
 
     return load_access_request(request_id)
+
+
+def create_approved_session(request_id: str):
+    """Create a session only for an approved access request."""
+    from aic_gate.service import submit_approved_access_session
+
+    record = load_access_request(request_id)
+
+    if record is None:
+        raise LookupError("Access request not found.")
+
+    if record.get("status") != "APPROVED":
+        raise PermissionError(
+            "Access request must be approved before session creation."
+        )
+
+    request = AccessRequest(
+        bucket=record["bucket"],
+        prefix=record["prefix"],
+        actions=record["actions"],
+        duration_minutes=int(record["duration_minutes"]),
+        reason=record["reason"],
+    )
+
+    return submit_approved_access_session(
+        request,
+        request_id=request_id,
+    )

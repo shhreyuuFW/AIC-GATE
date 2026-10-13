@@ -1,4 +1,6 @@
 
+from aic_gate.request_service import create_approved_session
+from unittest.mock import patch
 from datetime import datetime, timezone
 
 import pytest
@@ -145,3 +147,75 @@ def test_review_handles_concurrent_decision(monkeypatch):
             "APPROVED",
             "test-admin",
         )
+
+
+@pytest.mark.parametrize("status", ["PENDING", "REJECTED"])
+def test_unapproved_request_cannot_create_session(status):
+    record = {
+        "request_id": "request-test-123",
+        "status": status,
+        "bucket": "cloudsec.proj.aicgate",
+        "prefix": "logs/",
+        "actions": ["s3:GetObject"],
+        "duration_minutes": 15,
+        "reason": "Test approval gate",
+    }
+
+    with (
+        patch(
+            "aic_gate.request_service.load_access_request",
+            return_value=record,
+        ),
+        patch(
+            "aic_gate.service.submit_approved_access_session"
+        ) as create_session,
+    ):
+        with pytest.raises(PermissionError):
+            create_approved_session("request-test-123")
+
+    create_session.assert_not_called()
+
+
+def test_unknown_request_cannot_create_session():
+    with (
+        patch(
+            "aic_gate.request_service.load_access_request",
+            return_value=None,
+        ),
+        patch(
+            "aic_gate.service.submit_approved_access_session"
+        ) as create_session,
+    ):
+        with pytest.raises(LookupError):
+            create_approved_session("missing-request")
+
+    create_session.assert_not_called()
+
+
+def test_approved_request_can_create_session():
+    record = {
+        "request_id": "request-test-123",
+        "status": "APPROVED",
+        "bucket": "cloudsec.proj.aicgate",
+        "prefix": "logs/",
+        "actions": ["s3:GetObject"],
+        "duration_minutes": 15,
+        "reason": "Test approval gate",
+    }
+
+    expected_result = ("mock-session", {"access_key_id": "test"})
+
+    with (
+        patch(
+            "aic_gate.request_service.load_access_request",
+            return_value=record,
+        ),
+        patch(
+            "aic_gate.service.submit_approved_access_session",
+            return_value=expected_result,
+        ) as create_session,
+    ):
+        result = create_approved_session("request-test-123")
+
+    assert result == expected_result
+    create_session.assert_called_once()
