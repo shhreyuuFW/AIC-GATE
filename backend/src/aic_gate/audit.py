@@ -5,12 +5,19 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import json
 import logging
+import sys
 from typing import Any, Literal
 from uuid import uuid4
 
 AuditOutcome = Literal["SUCCESS", "DENIED", "FAILED"]
 
 _AUDIT_LOGGER = logging.getLogger("aic_gate.audit")
+_AUDIT_LOGGER.setLevel(logging.INFO)
+_AUDIT_LOGGER.propagate = False
+if not _AUDIT_LOGGER.handlers:
+    _stdout_handler = logging.StreamHandler(sys.stdout)
+    _stdout_handler.setFormatter(logging.Formatter("%(message)s"))
+    _AUDIT_LOGGER.addHandler(_stdout_handler)
 _MAX_AUDIT_EVENTS = 500
 _SENSITIVE_KEY_FRAGMENTS = (
     "secret",

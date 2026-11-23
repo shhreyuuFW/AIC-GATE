@@ -71,6 +71,10 @@ Use the helper script from the repository root (builds the frontend if `frontend
 
 For hot-reloading UI development alongside the backend, also run `npm run dev` inside `frontend/` (`http://localhost:5173`).
 
+### 4. Deploy to Google Cloud Run (GitHub + Docker)
+
+A multi-stage [Dockerfile](Dockerfile) and [.dockerignore](.dockerignore) are included to run both the React bundle and FastAPI backend in one container. See [docs/CLOUD_RUN_DEPLOY.md](docs/CLOUD_RUN_DEPLOY.md) for full instructions using **Google Secret Manager** and **Cloud Run Continuous Deployment**.
+
 ---
 
 ## Running Tests
