@@ -6,7 +6,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from aic_gate.session import AccessSession
-from aic_gate.sts_client import assume_jit_role, build_session_policy
+from aic_gate.sts_client import (
+    assume_jit_role,
+    build_session_policy,
+    preview_session_policy,
+)
 
 
 def make_session(
@@ -62,10 +66,32 @@ def test_combined_actions_create_two_statements():
     assert len(policy["Statement"]) == 2
 
 
-@pytest.mark.parametrize("prefix", ["", "../secret", "logs/../secret", "logs//secret"])
+@pytest.mark.parametrize(
+    "prefix",
+    ["", "../secret", "logs/../secret", "logs//secret", "*", "logs*", "logs/?", "."],
+)
 def test_invalid_prefix_is_rejected(prefix):
     with pytest.raises(ValueError):
         build_session_policy(make_session(prefix=prefix))
+
+
+def test_preview_session_policy_matches_runtime_policy():
+    preview = preview_session_policy(
+        bucket="cloudsec.proj.aicgate",
+        prefix="logs/",
+        actions=["s3:GetObject", "s3:ListBucket"],
+    )
+    runtime = build_session_policy(make_session())
+    assert preview == runtime
+
+
+def test_preview_session_policy_rejects_wildcard_prefix():
+    with pytest.raises(ValueError):
+        preview_session_policy(
+            bucket="cloudsec.proj.aicgate",
+            prefix="logs*",
+            actions=["s3:GetObject"],
+        )
 
 
 @pytest.mark.parametrize("status", ["EXPIRED", "REVOKED"])

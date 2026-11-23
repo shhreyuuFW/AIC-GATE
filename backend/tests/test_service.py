@@ -4,7 +4,12 @@ from unittest.mock import patch
 
 import pytest
 
-from aic_gate.service import read_session_object, submit_access_request
+from aic_gate.service import (
+    list_access_sessions,
+    read_session_object,
+    revoke_access_session,
+    submit_access_request,
+)
 from aic_gate.validation import AccessRequest
 
 
@@ -22,9 +27,16 @@ def fake_session_store(monkeypatch):
         if session_id in store:
             store[session_id].status = status
 
+    def fake_list(requester_id=None):
+        items = list(store.values())
+        if requester_id is not None:
+            items = [s for s in items if s.requester_id == requester_id]
+        return items
+
     monkeypatch.setattr("aic_gate.service.save_session", fake_save)
     monkeypatch.setattr("aic_gate.service.load_access_session", fake_load)
     monkeypatch.setattr("aic_gate.service.update_session_status", fake_update_status)
+    monkeypatch.setattr("aic_gate.service.list_sessions", fake_list)
     return store
 
 def test_read_session_object_rejects_wrong_prefix():
@@ -124,3 +136,37 @@ def test_read_session_object_rejects_invalid_keys(key, monkeypatch):
 
     with pytest.raises(PermissionError, match="Invalid object key"):
         service.read_session_object(session.session_id, key)
+
+
+def test_revoke_expired_session_raises_value_error(fake_session_store):
+    request = AccessRequest(
+        bucket="cloudsec.proj.aicgate",
+        prefix="logs/",
+        actions=["s3:GetObject"],
+        duration_minutes=15,
+        reason="Test expired revocation guard",
+    )
+    session = submit_access_request(request)
+    session.expires_at = session.created_at - timedelta(minutes=1)
+
+    with pytest.raises(ValueError, match="EXPIRED"):
+        revoke_access_session(session.session_id)
+
+    assert fake_session_store[session.session_id].status == "EXPIRED"
+
+
+def test_list_access_sessions_reconciles_expiry(fake_session_store):
+    request = AccessRequest(
+        bucket="cloudsec.proj.aicgate",
+        prefix="logs/",
+        actions=["s3:GetObject"],
+        duration_minutes=15,
+        reason="Test session list",
+    )
+    session = submit_access_request(request)
+    session.requester_id = "usr-operator-01"
+    future = session.expires_at + timedelta(seconds=10)
+
+    sessions = list_access_sessions(requester_id="usr-operator-01", now=future)
+    assert len(sessions) == 1
+    assert sessions[0].status == "EXPIRED"

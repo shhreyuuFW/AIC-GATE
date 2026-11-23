@@ -19,12 +19,14 @@ class AccessSession:
     expires_at: datetime
     status: SessionStatus = "ACTIVE"
     request_id: str | None = None
+    requester_id: str | None = None
 
 
 def create_session(
     request: AccessRequest,
     now: datetime | None = None,
     request_id: str | None = None,
+    requester_id: str | None = None,
 ) -> AccessSession:
     created_at = now or datetime.now(timezone.utc)
 
@@ -39,6 +41,7 @@ def create_session(
         ),
         status="ACTIVE",
         request_id=request_id,
+        requester_id=requester_id,
     )
 
 

@@ -44,12 +44,7 @@ def update_session_status(session_id: str, status: str) -> None:
     )
 
 
-def load_access_session(session_id: str) -> AccessSession | None:
-    item = load_session(session_id)
-
-    if item is None:
-        return None
-
+def _item_to_session(item: dict) -> AccessSession:
     return AccessSession(
         session_id=item["session_id"],
         bucket=item["bucket"],
@@ -59,4 +54,41 @@ def load_access_session(session_id: str) -> AccessSession | None:
         expires_at=datetime.fromisoformat(item["expires_at"]),
         status=item["status"],
         request_id=item.get("request_id"),
+        requester_id=item.get("requester_id"),
     )
+
+
+def load_access_session(session_id: str) -> AccessSession | None:
+    item = load_session(session_id)
+
+    if item is None:
+        return None
+
+    return _item_to_session(item)
+
+
+def list_sessions(requester_id: str | None = None) -> list[AccessSession]:
+    """Return sessions from DynamoDB, optionally filtered by requester_id."""
+    table = get_sessions_table()
+    items: list[dict] = []
+    scan_args: dict = {}
+
+    if requester_id is not None:
+        scan_args["FilterExpression"] = "requester_id = :requester_id"
+        scan_args["ExpressionAttributeValues"] = {
+            ":requester_id": requester_id
+        }
+
+    while True:
+        response = table.scan(**scan_args)
+        items.extend(response.get("Items", []))
+
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+
+        scan_args["ExclusiveStartKey"] = last_key
+
+    sessions = [_item_to_session(item) for item in items]
+    sessions.sort(key=lambda s: s.created_at, reverse=True)
+    return sessions

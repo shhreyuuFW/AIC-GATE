@@ -7,6 +7,7 @@ from typing import Any
 
 from aic_gate.config import create_boto3_session, get_settings
 from aic_gate.session import AccessSession, get_session_status
+from aic_gate.validation import AccessRequest, validate_request
 
 
 MIN_STS_DURATION_SECONDS = 900
@@ -19,47 +20,48 @@ def get_sts_client():
     return create_boto3_session(settings.aws_sts_profile).client("sts")
 
 
-def build_session_policy(session: AccessSession) -> dict[str, Any]:
-    """Build an STS session policy restricted to the approved session."""
-
-    if get_session_status(session) != "ACTIVE":
-        raise ValueError("Cannot issue credentials for an inactive session.")
-
-    bucket = session.bucket
-    prefix = session.prefix.strip("/")
+def _build_policy_document(
+    bucket: str,
+    prefix: str,
+    actions: list[str],
+) -> dict[str, Any]:
+    """Build a least-privilege IAM policy document for an S3 bucket/prefix."""
+    normalized_prefix = prefix.strip("/")
 
     if (
         not bucket
-        or not prefix
+        or not normalized_prefix
         or "\\" in prefix
-        or any(part in ("", ".", "..") for part in prefix.split("/"))
+        or "*" in prefix
+        or "?" in prefix
+        or any(part in ("", ".", "..") for part in normalized_prefix.split("/"))
     ):
         raise ValueError("Invalid bucket or prefix in access session.")
 
-    if not session.actions:
+    if not actions:
         raise ValueError("Session must contain at least one action.")
 
     allowed_actions = {"s3:GetObject", "s3:ListBucket"}
 
     if (
-        len(session.actions) != len(set(session.actions))
-        or not all(action in allowed_actions for action in session.actions)
+        len(actions) != len(set(actions))
+        or not all(action in allowed_actions for action in actions)
     ):
         raise ValueError("Session contains an unauthorized action.")
 
     statements: list[dict[str, Any]] = []
 
-    if "s3:GetObject" in session.actions:
+    if "s3:GetObject" in actions:
         statements.append(
             {
                 "Sid": "ReadObjectsInApprovedPrefix",
                 "Effect": "Allow",
                 "Action": "s3:GetObject",
-                "Resource": f"arn:aws:s3:::{bucket}/{prefix}/*",
+                "Resource": f"arn:aws:s3:::{bucket}/{normalized_prefix}/*",
             }
         )
 
-    if "s3:ListBucket" in session.actions:
+    if "s3:ListBucket" in actions:
         statements.append(
             {
                 "Sid": "ListOnlyApprovedPrefix",
@@ -68,7 +70,10 @@ def build_session_policy(session: AccessSession) -> dict[str, Any]:
                 "Resource": f"arn:aws:s3:::{bucket}",
                 "Condition": {
                     "StringLike": {
-                        "s3:prefix": [prefix, f"{prefix}/*"]
+                        "s3:prefix": [
+                            normalized_prefix,
+                            f"{normalized_prefix}/*",
+                        ]
                     }
                 },
             }
@@ -78,6 +83,41 @@ def build_session_policy(session: AccessSession) -> dict[str, Any]:
         "Version": "2012-10-17",
         "Statement": statements,
     }
+
+
+def build_session_policy(session: AccessSession) -> dict[str, Any]:
+    """Build an STS session policy restricted to the approved session."""
+
+    if get_session_status(session) != "ACTIVE":
+        raise ValueError("Cannot issue credentials for an inactive session.")
+
+    return _build_policy_document(
+        bucket=session.bucket,
+        prefix=session.prefix,
+        actions=session.actions,
+    )
+
+
+def preview_session_policy(
+    bucket: str,
+    prefix: str,
+    actions: list[str],
+) -> dict[str, Any]:
+    """Validate parameters and return the exact STS session policy preview."""
+    validate_request(
+        AccessRequest(
+            bucket=bucket,
+            prefix=prefix,
+            actions=actions,
+            duration_minutes=15,
+            reason="policy preview",
+        )
+    )
+    return _build_policy_document(
+        bucket=bucket,
+        prefix=prefix,
+        actions=actions,
+    )
 
 
 def assume_jit_role(

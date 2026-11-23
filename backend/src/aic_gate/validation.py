@@ -45,8 +45,15 @@ def validate_request(request: AccessRequest) -> None:
     if (
         request.prefix.startswith("/")
         or "\\" in request.prefix
-        or any(part == ".." for part in request.prefix.split("/"))
+        or "*" in request.prefix
+        or "?" in request.prefix
         or any(ord(char) < 32 for char in request.prefix)
+    ):
+        raise ValueError("Invalid S3 prefix.")
+
+    normalized_prefix = request.prefix.strip("/")
+    if not normalized_prefix or any(
+        part in ("", ".", "..") for part in normalized_prefix.split("/")
     ):
         raise ValueError("Invalid S3 prefix.")
 

@@ -9,6 +9,7 @@ from aic_gate.session import (
     revoke_session,
 )
 from aic_gate.session_store import (
+    list_sessions,
     load_access_session,
     save_session,
     update_session_status,
@@ -142,11 +143,33 @@ def get_current_session_status(
     return get_session_status(session, now)
 
 
+def list_access_sessions(
+    requester_id: str | None = None,
+    now: datetime | None = None,
+) -> list[AccessSession]:
+    """List sessions and lazily reconcile any newly expired records."""
+    sessions = list_sessions(requester_id=requester_id)
+    current_time = now or datetime.now(timezone.utc)
+
+    for session in sessions:
+        status = get_session_status(session, current_time)
+        if session.status != status:
+            session.status = status
+            update_session_status(session.session_id, status)
+
+    return sessions
+
+
 def revoke_access_session(session_id: str) -> AccessSession | None:
     session = get_session(session_id)
 
     if session is None:
         return None
+
+    if session.status != "ACTIVE":
+        raise ValueError(
+            f"Cannot revoke session with status {session.status}."
+        )
 
     revoke_session(session)
     update_session_status(session_id, "REVOKED")
@@ -194,13 +217,18 @@ def read_session_object(
 def submit_approved_access_session(
     request: AccessRequest,
     request_id: str,
+    requester_id: str | None = None,
 ) -> tuple[AccessSession, dict]:
     """Create a session linked to an approved access request."""
     if not request_id or not request_id.strip():
         raise ValueError("An approved request ID is required.")
 
     validate_request(request)
-    session = create_session(request, request_id=request_id)
+    session = create_session(
+        request,
+        request_id=request_id,
+        requester_id=requester_id,
+    )
 
     duration_seconds = request.duration_minutes * 60
     credentials = assume_jit_role(

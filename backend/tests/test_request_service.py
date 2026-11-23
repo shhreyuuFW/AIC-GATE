@@ -258,3 +258,39 @@ def test_approved_request_cannot_create_session_twice():
             create_approved_session("request-test-123")
 
     create_session.assert_not_called()
+
+
+def test_failed_session_creation_releases_claimed_request():
+    record = {
+        "request_id": "request-test-123",
+        "requester_id": "usr-operator-01",
+        "status": "APPROVED",
+        "bucket": "cloudsec.proj.aicgate",
+        "prefix": "logs/",
+        "actions": ["s3:GetObject"],
+        "duration_minutes": 15,
+        "reason": "Test rollback on failure",
+    }
+
+    with (
+        patch(
+            "aic_gate.request_service.load_access_request",
+            return_value=record,
+        ),
+        patch(
+            "aic_gate.request_service.claim_approved_request",
+            return_value=True,
+        ),
+        patch(
+            "aic_gate.request_service.submit_approved_access_session",
+            side_effect=RuntimeError("STS down"),
+        ),
+        patch(
+            "aic_gate.request_service.release_claimed_request",
+            return_value=True,
+        ) as release_claim,
+    ):
+        with pytest.raises(RuntimeError, match="STS down"):
+            create_approved_session("request-test-123")
+
+    release_claim.assert_called_once_with("request-test-123")

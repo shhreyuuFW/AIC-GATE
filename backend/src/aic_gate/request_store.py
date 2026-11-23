@@ -75,24 +75,36 @@ def update_access_request(
         raise
 
 
-def list_access_requests(status: str | None = None):
-    """Return requests, optionally filtered by status.
+def list_access_requests(
+    status: str | None = None,
+    requester_id: str | None = None,
+):
+    """Return requests, optionally filtered by status and/or requester_id.
 
     Scan pagination is handled here. For a small prototype this is
     acceptable; a production system should use a suitable index/query.
     """
     table = get_access_requests_table()
     items = []
-    scan_args = {}
+    scan_args: dict = {}
+    filter_parts: list[str] = []
+    attr_names: dict[str, str] = {}
+    attr_values: dict[str, str] = {}
 
     if status is not None:
-        scan_args["FilterExpression"] = "#status = :status"
-        scan_args["ExpressionAttributeNames"] = {
-            "#status": "status"
-        }
-        scan_args["ExpressionAttributeValues"] = {
-            ":status": status
-        }
+        filter_parts.append("#status = :status")
+        attr_names["#status"] = "status"
+        attr_values[":status"] = status
+
+    if requester_id is not None:
+        filter_parts.append("requester_id = :requester_id")
+        attr_values[":requester_id"] = requester_id
+
+    if filter_parts:
+        scan_args["FilterExpression"] = " AND ".join(filter_parts)
+        if attr_names:
+            scan_args["ExpressionAttributeNames"] = attr_names
+        scan_args["ExpressionAttributeValues"] = attr_values
 
     while True:
         response = table.scan(**scan_args)
@@ -122,6 +134,28 @@ def claim_approved_request(request_id: str) -> bool:
             ExpressionAttributeValues={
                 ":approved": "APPROVED",
                 ":creating": "CREATING_SESSION",
+            },
+        )
+        return True
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == (
+            "ConditionalCheckFailedException"
+        ):
+            return False
+        raise
+
+
+def release_claimed_request(request_id: str) -> bool:
+    """Roll back a CREATING_SESSION claim back to APPROVED if creation fails."""
+    try:
+        get_access_requests_table().update_item(
+            Key={"request_id": request_id},
+            UpdateExpression="SET #status = :approved",
+            ConditionExpression="#status = :creating",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={
+                ":creating": "CREATING_SESSION",
+                ":approved": "APPROVED",
             },
         )
         return True

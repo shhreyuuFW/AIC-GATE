@@ -9,6 +9,7 @@ from aic_gate.request_store import (
     list_access_requests,
     load_access_request,
     record_created_session,
+    release_claimed_request,
     save_access_request,
     update_access_request,
 )
@@ -41,11 +42,14 @@ def get_access_request_record(request_id: str):
     return load_access_request(request_id)
 
 
-def list_access_request_records(status: str | None = None):
+def list_access_request_records(
+    status: str | None = None,
+    requester_id: str | None = None,
+):
     if status is not None and status not in VALID_REQUEST_STATUSES:
         raise ValueError("Invalid request status.")
 
-    return list_access_requests(status=status)
+    return list_access_requests(status=status, requester_id=requester_id)
 
 
 def review_access_request(
@@ -107,10 +111,15 @@ def create_approved_session(request_id: str):
         reason=record["reason"],
     )
 
-    session, credentials = submit_approved_access_session(
-        request,
-        request_id=request_id,
-    )
+    try:
+        session, credentials = submit_approved_access_session(
+            request,
+            request_id=request_id,
+            requester_id=record.get("requester_id"),
+        )
+    except Exception:
+        release_claimed_request(request_id)
+        raise
 
     if not record_created_session(request_id, session.session_id):
         # Do not return credentials if we cannot record the linkage.

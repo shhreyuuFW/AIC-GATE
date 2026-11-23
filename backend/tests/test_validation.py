@@ -33,7 +33,20 @@ def test_unapproved_bucket_is_rejected():
 
 @pytest.mark.parametrize(
     "prefix",
-    ["", "/logs/", "../secrets/", "logs/../secrets/", "logs\\secrets/"],
+    [
+        "",
+        "/",
+        "/logs/",
+        "../secrets/",
+        "logs/../secrets/",
+        "logs\\secrets/",
+        "*",
+        "logs*",
+        "logs/?",
+        ".",
+        "./logs/",
+        "logs//sample/",
+    ],
 )
 def test_invalid_prefix_is_rejected(prefix):
     with pytest.raises(ValueError):
