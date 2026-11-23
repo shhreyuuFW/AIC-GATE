@@ -59,12 +59,13 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
-FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
-if FRONTEND_DIR.is_dir():
+FRONTEND_DIST_DIR = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+FRONTEND_ASSETS_DIR = FRONTEND_DIST_DIR / "assets"
+if FRONTEND_ASSETS_DIR.is_dir():
     app.mount(
-        "/static",
-        StaticFiles(directory=str(FRONTEND_DIR)),
-        name="static",
+        "/assets",
+        StaticFiles(directory=str(FRONTEND_ASSETS_DIR)),
+        name="assets",
     )
 
 
@@ -150,12 +151,25 @@ def health_check():
     return {"status": "ok"}
 
 
-@app.get("/", include_in_schema=False)
-def frontend():
-    index_path = FRONTEND_DIR / "index.html"
+def _serve_spa_index():
+    index_path = FRONTEND_DIST_DIR / "index.html"
     if not index_path.is_file():
         raise HTTPException(status_code=404, detail="Frontend not built")
     return FileResponse(index_path)
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/login", include_in_schema=False)
+@app.get("/client", include_in_schema=False)
+@app.get("/client/{path:path}", include_in_schema=False)
+@app.get("/admin", include_in_schema=False)
+@app.get("/admin/sessions", include_in_schema=False)
+@app.get("/admin/graph", include_in_schema=False)
+@app.get("/admin/audit-log", include_in_schema=False)
+@app.get("/admin/guide", include_in_schema=False)
+def frontend(path: str = ""):
+    del path
+    return _serve_spa_index()
 
 
 @app.post("/auth/login")
