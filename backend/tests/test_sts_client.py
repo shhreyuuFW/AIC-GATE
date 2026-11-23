@@ -1,10 +1,12 @@
 
 from datetime import datetime, timedelta, timezone
+import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from aic_gate.session import AccessSession
-from aic_gate.sts_client import build_session_policy
+from aic_gate.sts_client import assume_jit_role, build_session_policy
 
 
 def make_session(
@@ -84,3 +86,45 @@ def test_duplicate_actions_are_rejected():
         build_session_policy(
             make_session(actions=["s3:GetObject", "s3:GetObject"])
         )
+
+
+def test_assume_jit_role_calls_sts_with_scoped_policy():
+    session = make_session()
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=30)
+    mock_sts = MagicMock()
+    mock_sts.assume_role.return_value = {
+        "Credentials": {
+            "AccessKeyId": "ASIA_TEST",
+            "SecretAccessKey": "SECRET_TEST",
+            "SessionToken": "TOKEN_TEST",
+            "Expiration": expiry,
+        }
+    }
+
+    with patch("aic_gate.sts_client.get_sts_client", return_value=mock_sts):
+        creds = assume_jit_role(session, duration_seconds=1800)
+
+    assert creds == {
+        "access_key_id": "ASIA_TEST",
+        "secret_access_key": "SECRET_TEST",
+        "session_token": "TOKEN_TEST",
+        "expires_at": expiry,
+    }
+    mock_sts.assume_role.assert_called_once()
+    kwargs = mock_sts.assume_role.call_args.kwargs
+    assert kwargs["RoleArn"].endswith(":role/AICGateJITRole")
+    assert kwargs["RoleSessionName"] == "aic-gate-test-ses"
+    assert kwargs["DurationSeconds"] == 1800
+    parsed_policy = json.loads(kwargs["Policy"])
+    assert len(parsed_policy["Statement"]) == 2
+
+
+@pytest.mark.parametrize("duration", [899, 3601, True, False])
+def test_assume_jit_role_rejects_invalid_duration(duration):
+    with pytest.raises(ValueError, match="900 and 3600"):
+        assume_jit_role(make_session(), duration_seconds=duration)
+
+
+def test_assume_jit_role_rejects_inactive_session():
+    with pytest.raises(ValueError, match="inactive"):
+        assume_jit_role(make_session(status="REVOKED"), duration_seconds=900)

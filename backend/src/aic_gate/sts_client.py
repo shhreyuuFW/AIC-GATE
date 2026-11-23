@@ -1,22 +1,22 @@
 
 """AWS STS helpers for AIC-GATE temporary access sessions."""
 
+from functools import lru_cache
 import json
-from datetime import datetime, timezone
 from typing import Any
 
-import boto3
-
+from aic_gate.config import create_boto3_session, get_settings
 from aic_gate.session import AccessSession, get_session_status
 
 
-AWS_REGION = "ap-south-1"
-JIT_ROLE_ARN = (
-    "arn:aws:iam::023644376485:role/AICGateJITRole"
-)
-
 MIN_STS_DURATION_SECONDS = 900
 MAX_STS_DURATION_SECONDS = 3600
+
+
+@lru_cache(maxsize=1)
+def get_sts_client():
+    settings = get_settings()
+    return create_boto3_session(settings.aws_sts_profile).client("sts")
 
 
 def build_session_policy(session: AccessSession) -> dict[str, Any]:
@@ -103,15 +103,11 @@ def assume_jit_role(
         raise ValueError("STS duration must be between 900 and 3600 seconds.")
 
     policy = build_session_policy(session)
-
-    source = boto3.Session(
-        profile_name="aic-gate-dev",
-        region_name=AWS_REGION,
-    )
-    sts = source.client("sts")
+    settings = get_settings()
+    sts = get_sts_client()
 
     response = sts.assume_role(
-        RoleArn=JIT_ROLE_ARN,
+        RoleArn=settings.jit_role_arn,
         RoleSessionName=f"aic-gate-{session.session_id[:8]}",
         DurationSeconds=duration_seconds,
         Policy=json.dumps(policy, separators=(",", ":")),

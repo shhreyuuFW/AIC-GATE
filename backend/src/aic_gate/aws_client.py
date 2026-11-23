@@ -1,11 +1,12 @@
-import boto3
-from aic_gate.validation import validate_request
+from functools import lru_cache
 
+from aic_gate.config import create_boto3_session, get_settings
+
+
+@lru_cache(maxsize=1)
 def get_s3_client():
-    return boto3.Session(
-        profile_name="aic-gate-logs-reader",
-        region_name="ap-south-1",
-    ).client("s3")
+    settings = get_settings()
+    return create_boto3_session(settings.aws_data_profile).client("s3")
 
 
 def read_s3_object(bucket: str, key: str) -> str:

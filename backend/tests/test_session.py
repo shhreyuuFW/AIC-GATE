@@ -106,7 +106,9 @@ def make_request(**overrides) -> AccessRequest:
     return AccessRequest(**values)
 
 
-def test_valid_request_creates_session():
+def test_valid_request_creates_session(monkeypatch):
+    saved = []
+    monkeypatch.setattr("aic_gate.service.save_session", saved.append)
     request = make_request()
 
     session = submit_access_request(request)
@@ -116,6 +118,7 @@ def test_valid_request_creates_session():
     assert session.prefix == request.prefix
     assert session.actions == request.actions
     assert session.status == "ACTIVE"
+    assert saved == [session]
 
 
 def test_invalid_request_does_not_create_session():

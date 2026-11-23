@@ -9,7 +9,13 @@ from uuid import uuid4
 from aic_gate.validation import AccessRequest, validate_request
 
 
-RequestStatus = Literal["PENDING", "APPROVED", "REJECTED"]
+RequestStatus = Literal[
+    "PENDING",
+    "APPROVED",
+    "REJECTED",
+    "CREATING_SESSION",
+    "SESSION_CREATED",
+]
 
 
 @dataclass

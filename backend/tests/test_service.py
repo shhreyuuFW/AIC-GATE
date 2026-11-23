@@ -1,11 +1,31 @@
 
-from unittest.mock import patch
 from datetime import timedelta
-from aic_gate.validation import AccessRequest
+from unittest.mock import patch
+
 import pytest
 
-from aic_gate.service import read_session_object
-from aic_gate.service import submit_access_request
+from aic_gate.service import read_session_object, submit_access_request
+from aic_gate.validation import AccessRequest
+
+
+@pytest.fixture(autouse=True)
+def fake_session_store(monkeypatch):
+    store = {}
+
+    def fake_save(session):
+        store[session.session_id] = session
+
+    def fake_load(session_id):
+        return store.get(session_id)
+
+    def fake_update_status(session_id, status):
+        if session_id in store:
+            store[session_id].status = status
+
+    monkeypatch.setattr("aic_gate.service.save_session", fake_save)
+    monkeypatch.setattr("aic_gate.service.load_access_session", fake_load)
+    monkeypatch.setattr("aic_gate.service.update_session_status", fake_update_status)
+    return store
 
 def test_read_session_object_rejects_wrong_prefix():
     request = AccessRequest(

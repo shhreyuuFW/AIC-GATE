@@ -167,7 +167,7 @@ def test_unapproved_request_cannot_create_session(status):
             return_value=record,
         ),
         patch(
-            "aic_gate.service.submit_approved_access_session"
+            "aic_gate.request_service.submit_approved_access_session"
         ) as create_session,
     ):
         with pytest.raises(PermissionError):
@@ -183,7 +183,7 @@ def test_unknown_request_cannot_create_session():
             return_value=None,
         ),
         patch(
-            "aic_gate.service.submit_approved_access_session"
+            "aic_gate.request_service.submit_approved_access_session"
         ) as create_session,
     ):
         with pytest.raises(LookupError):
@@ -212,15 +212,15 @@ def test_approved_request_can_create_session():
             return_value=record,
         ),
         patch(
-            "aic_gate.service.submit_approved_access_session",
+            "aic_gate.request_service.submit_approved_access_session",
             return_value=expected_result,
         ) as create_session,
         patch(
-            "aic_gate.request_store.claim_approved_request",
+            "aic_gate.request_service.claim_approved_request",
             return_value=True,
         ),
         patch(
-            "aic_gate.request_store.record_created_session",
+            "aic_gate.request_service.record_created_session",
             return_value=True,
         ),
     ):
@@ -231,9 +231,6 @@ def test_approved_request_can_create_session():
 
 
 def test_approved_request_cannot_create_session_twice():
-    from unittest.mock import patch
-    import pytest
-
     record = {
         "request_id": "request-test-123",
         "status": "APPROVED",
@@ -250,11 +247,11 @@ def test_approved_request_cannot_create_session_twice():
             return_value=record,
         ),
         patch(
-            "aic_gate.request_store.claim_approved_request",
+            "aic_gate.request_service.claim_approved_request",
             return_value=False,
         ),
         patch(
-            "aic_gate.service.submit_approved_access_session",
+            "aic_gate.request_service.submit_approved_access_session",
         ) as create_session,
     ):
         with pytest.raises(ValueError):

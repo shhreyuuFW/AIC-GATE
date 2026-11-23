@@ -1,19 +1,19 @@
 
-from aic_gate.session import AccessSession
-import boto3
 from dataclasses import asdict
-from decimal import Decimal
 from datetime import datetime
+from functools import lru_cache
 
-TABLE_NAME = "AICGateSession"
+from aic_gate.config import create_boto3_session, get_settings
+from aic_gate.session import AccessSession
 
+
+@lru_cache(maxsize=1)
 def get_sessions_table():
-    session = boto3.Session(
-        profile_name="aic-gate-logs-reader",
-        region_name="ap-south-1",
+    settings = get_settings()
+    dynamodb = create_boto3_session(settings.aws_data_profile).resource(
+        "dynamodb"
     )
-    dynamodb = session.resource("dynamodb")
-    return dynamodb.Table(TABLE_NAME)
+    return dynamodb.Table(settings.sessions_table_name)
 
 
 def save_session(session) -> None:

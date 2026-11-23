@@ -1,32 +1,25 @@
 
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
 from aic_gate.request_service import (
-    submit_access_request_record,
-    get_access_request_record,
-    list_access_request_records,
-    review_access_request,
     create_approved_session,
-)
-from aic_gate.validation import AccessRequest
-from aic_gate.request_service import (
-    submit_access_request_record,
     get_access_request_record,
     list_access_request_records,
     review_access_request,
+    submit_access_request_record,
 )
 from aic_gate.service import (
-    get_current_session_status,
     get_session,
-    revoke_access_session,
     issue_session_credentials,
     read_session_object,
+    revoke_access_session,
 )
+from aic_gate.validation import AccessRequest
 
 app = FastAPI(
     title="AIC-Gate",
@@ -217,49 +210,12 @@ def create_session_from_approved_request(request_id: str):
         ) from exc
 
 
-@app.post("/admin/requests/{request_id}/create-session", status_code=201)
-def create_session_from_approved_request(request_id: str):
-    try:
-        session, credentials = create_approved_session(request_id)
-
-        return {
-            "session_id": session.session_id,
-            "request_id": session.request_id,
-            "bucket": session.bucket,
-            "prefix": session.prefix,
-            "actions": session.actions,
-            "created_at": session.created_at.isoformat(),
-            "expires_at": session.expires_at.isoformat(),
-            "status": session.status,
-            "credentials": {
-                "access_key_id": credentials["access_key_id"],
-                "secret_access_key": credentials["secret_access_key"],
-                "session_token": credentials["session_token"],
-                "expires_at": credentials["expires_at"].isoformat(),
-            },
-        }
-
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Unable to create session from approved request",
-        ) from exc
-
-
 @app.get("/sessions/{session_id}")
 def retrieve_session(session_id: str):
     session = get_session(session_id)
 
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-
-    status = get_current_session_status(session_id)
 
     return {
         "session_id": session.session_id,
@@ -268,7 +224,7 @@ def retrieve_session(session_id: str):
         "actions": session.actions,
         "created_at": session.created_at.isoformat(),
         "expires_at": session.expires_at.isoformat(),
-        "status": status,
+        "status": session.status,
     }
 
 

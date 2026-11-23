@@ -5,17 +5,24 @@ from datetime import datetime, timezone
 
 from aic_gate.access_request import create_access_request
 from aic_gate.request_store import (
+    claim_approved_request,
     list_access_requests,
     load_access_request,
+    record_created_session,
     save_access_request,
     update_access_request,
-    claim_approved_request,
 )
-from aic_gate.validation import AccessRequest
 from aic_gate.service import submit_approved_access_session
 from aic_gate.validation import AccessRequest
 
 VALID_DECISIONS = {"APPROVED", "REJECTED"}
+VALID_REQUEST_STATUSES = {
+    "PENDING",
+    "APPROVED",
+    "REJECTED",
+    "CREATING_SESSION",
+    "SESSION_CREATED",
+}
 
 
 def submit_access_request_record(
@@ -35,11 +42,7 @@ def get_access_request_record(request_id: str):
 
 
 def list_access_request_records(status: str | None = None):
-    if status is not None and status not in {
-        "PENDING",
-        "APPROVED",
-        "REJECTED",
-    }:
+    if status is not None and status not in VALID_REQUEST_STATUSES:
         raise ValueError("Invalid request status.")
 
     return list_access_requests(status=status)
@@ -81,13 +84,6 @@ def review_access_request(
 
 def create_approved_session(request_id: str):
     """Claim an approved request and create its linked session."""
-    from aic_gate.service import submit_approved_access_session
-    from aic_gate.validation import AccessRequest
-    from aic_gate.request_store import (
-        claim_approved_request,
-        record_created_session,
-    )
-
     record = load_access_request(request_id)
 
     if record is None:

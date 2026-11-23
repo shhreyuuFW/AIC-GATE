@@ -19,15 +19,12 @@ from aic_gate.sts_client import (
 )
 from aic_gate.validation import AccessRequest, validate_request
 
-_sessions: dict[str, AccessSession] = {}
-
 
 def submit_access_request(request: AccessRequest) -> AccessSession:
     validate_request(request)
     session = create_session(request)
 
     save_session(session)
-    _sessions[session.session_id] = session
 
     return session
 
@@ -64,7 +61,6 @@ def submit_access_request_with_credentials(
     # Persist before returning credentials to the caller.
     # If persistence fails, the API must not deliver the credentials.
     save_session(session)
-    _sessions[session.session_id] = session
 
     return session, credentials
 
@@ -76,7 +72,6 @@ def get_session(
     session = load_access_session(session_id)
 
     if session is None:
-        _sessions.pop(session_id, None)
         return None
 
     current_time = now or datetime.now(timezone.utc)
@@ -86,7 +81,6 @@ def get_session(
         session.status = status
         update_session_status(session_id, status)
 
-    _sessions[session_id] = session
     return session
 
 
@@ -225,43 +219,7 @@ def submit_approved_access_session(
         seconds=duration_seconds
     )
 
-    # Save the session before returning credentials.
-    save_session(session)
-    _sessions[session.session_id] = session
-
-    return session, credentials
-
-
-def submit_approved_access_session(
-    request: AccessRequest,
-    request_id: str,
-) -> tuple[AccessSession, dict]:
-    """Create a session linked to an approved request."""
-    if not request_id or not request_id.strip():
-        raise ValueError("An approved request ID is required.")
-
-    validate_request(request)
-    session = create_session(request, request_id=request_id)
-
-    duration_seconds = request.duration_minutes * 60
-    credentials = assume_jit_role(
-        session,
-        duration_seconds=duration_seconds,
-    )
-
-    credential_expiry = credentials["expires_at"]
-    if credential_expiry.tzinfo is None:
-        credential_expiry = credential_expiry.replace(
-            tzinfo=timezone.utc
-        )
-
-    session.expires_at = credential_expiry
-    session.created_at = credential_expiry - timedelta(
-        seconds=duration_seconds
-    )
-
     # Persist before returning credentials to the caller.
     save_session(session)
-    _sessions[session.session_id] = session
 
     return session, credentials

@@ -3,6 +3,8 @@ from botocore.exceptions import ClientError
 import pytest
 from aic_gate.aws_client import get_s3_client
 
+pytestmark = pytest.mark.integration
+
 BUCKET = "cloudsec.proj.aicgate"
 
 

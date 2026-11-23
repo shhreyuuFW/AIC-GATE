@@ -4,6 +4,8 @@
 from dataclasses import dataclass
 import re
 
+from aic_gate.config import get_settings
+
 
 MAX_SESSION_MINUTES = 60
 MIN_SESSION_MINUTES = 15
@@ -34,7 +36,7 @@ def validate_request(request: AccessRequest) -> None:
         raise ValueError("Invalid bucket name.")
 
     # Only explicitly configured lab buckets may be accessed.
-    if request.bucket != "cloudsec.proj.aicgate":
+    if request.bucket not in get_settings().allowed_buckets:
         raise ValueError("Bucket is not allowlisted.")
 
     if not isinstance(request.prefix, str) or not request.prefix.strip():

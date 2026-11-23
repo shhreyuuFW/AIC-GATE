@@ -12,6 +12,7 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "boto3",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]
@@ -25,3 +26,6 @@ where = ["backend/src"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
+markers = [
+    "integration: tests that call live AWS services",
+]

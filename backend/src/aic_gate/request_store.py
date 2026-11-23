@@ -1,31 +1,22 @@
 
 """DynamoDB persistence for AIC-GATE access requests."""
 
-import os
-import boto3
-from botocore.exceptions import ClientError
 from dataclasses import asdict
+from functools import lru_cache
+
+from botocore.exceptions import ClientError
 
 from aic_gate.access_request import AccessRequestRecord
-
-TABLE_NAME = "AICGateAccessRequest"
-AWS_REGION = os.getenv("AWS_REGION", "ap-south-1")
+from aic_gate.config import create_boto3_session, get_settings
 
 
+@lru_cache(maxsize=1)
 def get_access_requests_table():
-    if os.getenv("VERCEL") == "1":
-        session = boto3.Session(region_name=AWS_REGION)
-    else:
-        profile = os.getenv(
-            "AIC_GATE_AWS_PROFILE",
-            "aic-gate-logs-reader",
-        )
-        session = boto3.Session(
-            profile_name=profile,
-            region_name=AWS_REGION,
-        )
-
-    return session.resource("dynamodb").Table(TABLE_NAME)
+    settings = get_settings()
+    dynamodb = create_boto3_session(settings.aws_data_profile).resource(
+        "dynamodb"
+    )
+    return dynamodb.Table(settings.requests_table_name)
 
 
 def save_access_request(request: AccessRequestRecord):
@@ -120,39 +111,8 @@ def list_access_requests(status: str | None = None):
     )
 
 
-def create_approved_session(request_id: str):
-    """Create and persist a session for an approved request."""
-    from aic_gate.service import submit_approved_access_session
-    from aic_gate.validation import AccessRequest
-
-    record = load_access_request(request_id)
-
-    if record is None:
-        raise LookupError("Access request not found.")
-
-    if record.get("status") != "APPROVED":
-        raise PermissionError(
-            "Access request must be approved before session creation."
-        )
-
-    request = AccessRequest(
-        bucket=record["bucket"],
-        prefix=record["prefix"],
-        actions=record["actions"],
-        duration_minutes=int(record["duration_minutes"]),
-        reason=record["reason"],
-    )
-
-    return submit_approved_access_session(
-        request,
-        request_id=request_id,
-    )
-
-
 def claim_approved_request(request_id: str) -> bool:
     """Atomically claim an approved request for session creation."""
-    from botocore.exceptions import ClientError
-
     try:
         get_access_requests_table().update_item(
             Key={"request_id": request_id},
