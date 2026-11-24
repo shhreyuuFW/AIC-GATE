@@ -218,3 +218,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+#project-related
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.env
+.aws/
+
+# Frontend build & dependencies
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+!frontend/src/lib/

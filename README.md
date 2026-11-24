@@ -1,48 +1,98 @@
-# AIC-Gate
+# AIC-GATE
 
-**Automated Identity Controller & JIT Gateway**
+**Automated Identity Controller & Just-in-Time Access Gateway**
 
-A cloud security project implementing Just-in-Time (JIT) access control for Amazon S3, temporary AWS credentials, session tracking, automated expiry, and live entitlement visualization.
+AIC-GATE is an application-driven Just-in-Time (JIT) access gateway for Amazon S3. It centralizes scoped access requests, human administrator approval, temporary AWS STS credential issuance with restrictive session policies, DynamoDB tracking, and role-separated web portals.
 
-## Objectives
+> **Important boundary:** AIC-GATE does not replace AWS IAM. AWS IAM role policies and STS session policies enforce resource authorization on every S3 request.
 
-- Enforce least-privilege access to private S3 resources.
-- Grant approved access through short-lived AWS STS credentials.
-- Track active access sessions and their expiration times.
-- Revoke or expire access and clean up entitlement records.
-- Visualize active identity-to-resource relationships.
-- Detect and investigate unauthorized access attempts.
+---
 
-## Architecture
+## Architecture & Portals
 
-- **Backend:** Python, Boto3, AWS Lambda, API Gateway
-- **Identity and authorization:** AWS IAM, STS, S3
-- **Session state:** Amazon DynamoDB
-- **Workflow orchestration:** AWS Step Functions
-- **Dashboard:** JavaScript and Cytoscape.js
-- **Testing:** Python and AWS CLI
+- **Backend:** Python 3.13+, FastAPI, `PyJWT` (`HS256`), `bcrypt`, `boto3` (cached clients & DynamoDB resources)
+- **AWS Services:** AWS IAM (`AICGateJITRole`, `AICGateLogsReader`), AWS STS (`AssumeRole` + inline session policies), Amazon DynamoDB (`AICGateSession`, `AICGateAccessRequest`), Amazon S3
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4, Framer Motion, Lucide Icons (Arknights: Endfield-inspired industrial light & tactical dark theme)
 
-## Development Roadmap
+### Separated Dual-Role Interface
 
-1. Secure AWS lab and access-control baseline.
-2. JIT access broker and policy validation.
-3. Session tracking and expiration.
-4. Automated cleanup and revocation testing.
-5. Live entitlement graph.
-6. Security testing and documentation.
+| Portal | Routes | Capabilities |
+|---|---|---|
+| **Client / Operator Portal** | `/client`, `/client/sessions`, `/client/s3-tester`, `/client/guide` | Scoped request builder, **Live STS Session Policy Preview** (`POST /policy/preview`), personal request/session tracking, in-memory STS credential vault (PowerShell/Bash export), proxied S3 scope tester, and a **Client-only Field Manual**. |
+| **Admin / Commander Console** | `/admin`, `/admin/sessions`, `/admin/graph`, `/admin/audit-log`, `/admin/guide` | Filterable approval queue (`PENDING` → `APPROVED` / `REJECTED`), atomic session provisioning (`APPROVED` → `CREATING_SESSION` → `SESSION_CREATED` with automatic rollback on failure), global session telemetry, **Live Entitlement Graph** (`Identity → Session → S3 Prefix`), secret-redacted **Security Audit Log**, and an **Admin-only Operations Manual**. |
 
-## Security Principles
+---
 
-- Default deny and least privilege.
-- No production data in the development lab.
-- No credentials or secrets committed to Git.
-- Individual contributor identities and restricted AWS permissions.
-- Explicit testing of access expiry and unauthorized requests.
+## Security Model & Known Guarantees
 
-## Project Status
+- **Server-Side Authentication & RBAC:** All API endpoints (except `/health`, `/auth/login`, and static UI routes) require a signed Bearer JWT. `/admin/*` endpoints strictly enforce `role == "admin"`. Ownership checks prevent IDOR across requests and sessions.
+- **Prefix Hardening:** Request validation and STS policy construction reject wildcards (`*`, `?`), path traversal (`..`, `.`), backslashes, leading `/`, and empty segments (`//`).
+- **Secret Handling:** Temporary STS credentials are returned with `Cache-Control: no-store`, kept strictly in memory in the UI, and never written to browser storage or audit logs (audit metadata automatically redacts `secret`, `token`, `password`, and `credential` keys).
+- **Revocation Semantics:** Marking a session `REVOKED` in `AICGateSession` immediately blocks new STS key minting and proxied API S3 reads. **Already-issued STS credentials remain valid against AWS S3 directly until their STS `Expiration` timestamp.** Keep durations short (`15–60` minutes).
 
-Initial setup and architecture planning.
+---
+
+## Quick Start
+
+### 1. Configure Environment
+
+Copy `.env.example` to `.env` and adjust values for your AWS lab if needed:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+In `development` mode (`AIC_GATE_ENV=development`), local demo credentials are enabled:
+- **Client Operator:** `operator` / `operator-demo-pass`
+- **Admin Commander:** `commander` / `commander-demo-pass`
+
+In `production` mode (`AIC_GATE_ENV=production`), demo users are disabled by default and `AIC_GATE_JWT_SECRET` must be set to at least 32 characters.
+
+### 2. Install Dependencies
+
+```powershell
+# Backend (from repository root)
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+
+# Frontend
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+### 3. Run Locally
+
+Use the helper script from the repository root (builds the frontend if `frontend/dist` is missing and starts FastAPI on `http://127.0.0.1:8000`):
+
+```powershell
+.\scripts\dev.ps1
+```
+
+For hot-reloading UI development alongside the backend, also run `npm run dev` inside `frontend/` (`http://localhost:5173`).
+
+### 4. Deploy to Google Cloud Run (GitHub + Docker)
+
+A multi-stage [Dockerfile](Dockerfile) and [.dockerignore](.dockerignore) are included to run both the React bundle and FastAPI backend in one container. See [docs/CLOUD_RUN_DEPLOY.md](docs/CLOUD_RUN_DEPLOY.md) for full instructions using **Google Secret Manager** and **Cloud Run Continuous Deployment**.
+
+---
+
+## Running Tests
+
+### Fast Unit Tests (Mocked, No AWS Calls)
+
+```powershell
+$env:PYTHONPATH="backend/src"; .\.venv\Scripts\python.exe -m pytest backend/tests -m "not integration" -v
+```
+
+### Live AWS Integration Tests (Requires Configured Lab Profiles & Network)
+
+```powershell
+$env:PYTHONPATH="backend/src"; .\.venv\Scripts\python.exe -m pytest backend/tests -m integration -v
+```
+
+---
 
 ## Disclaimer
 
-This is an educational security engineering project. AWS authorization behavior and revocation guarantees must be verified experimentally before any production use.
+This is a security engineering project. Verify your AWS IAM policies, DynamoDB tables (`AICGateSession`, `AICGateAccessRequest`), and S3 bucket configuration before deploying beyond a local or isolated lab environment.
