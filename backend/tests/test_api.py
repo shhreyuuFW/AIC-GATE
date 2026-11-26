@@ -6,7 +6,8 @@ from fastapi.testclient import TestClient
 import pytest
 
 from aic_gate.audit import clear_audit_events
-from aic_gate.auth import AuthenticatedUser, create_access_token
+from aic_gate.auth import AuthenticatedUser, clear_user_cache, create_access_token
+from aic_gate.config import get_settings
 from aic_gate.main import app
 
 client = TestClient(app)
@@ -36,6 +37,9 @@ def make_active_session(**overrides):
         "session_id": "session-test-123",
         "request_id": "request-test-123",
         "requester_id": "usr-operator-01",
+        "org_id": "org-aicgate-lab",
+        "service": "s3",
+        "resource_id": None,
         "bucket": "cloudsec.proj.aicgate",
         "prefix": "logs/",
         "actions": ["s3:GetObject"],
@@ -51,6 +55,9 @@ def make_pending_request(**overrides):
     data = {
         "request_id": "request-test-123",
         "requester_id": "usr-operator-01",
+        "org_id": "org-aicgate-lab",
+        "service": "s3",
+        "risk_level": "LOW",
         "bucket": "cloudsec.proj.aicgate",
         "prefix": "logs/",
         "actions": ["s3:GetObject"],
@@ -66,9 +73,14 @@ def make_pending_request(**overrides):
 
 
 @pytest.fixture(autouse=True)
-def reset_audit():
+def reset_audit(monkeypatch):
+    monkeypatch.setenv("AIC_GATE_IDENTITY_BACKEND", "memory")
+    get_settings.cache_clear()
+    clear_user_cache()
     clear_audit_events()
     yield
+    get_settings.cache_clear()
+    clear_user_cache()
     clear_audit_events()
 
 
@@ -134,9 +146,14 @@ def test_non_admin_cannot_access_admin_routes():
     assert client.get("/admin/audit", headers=headers).status_code == 403
 
 
-def test_policy_preview_endpoint():
-    response = client.post(
-        "/policy/preview",
+def test_catalog_and_admin_only_policy_preview():
+    cat_resp = client.get("/catalog", headers=auth_headers("requester"))
+    assert cat_resp.status_code == 200
+    assert len(cat_resp.json()["resources"]) == 4
+
+    # Non-admins cannot access admin policy preview
+    forbidden = client.post(
+        "/admin/policy/preview",
         json={
             "bucket": "cloudsec.proj.aicgate",
             "prefix": "logs/",
@@ -144,19 +161,58 @@ def test_policy_preview_endpoint():
         },
         headers=auth_headers("requester"),
     )
+    assert forbidden.status_code == 403
+
+    response = client.post(
+        "/admin/policy/preview",
+        json={
+            "bucket": "cloudsec.proj.aicgate",
+            "prefix": "logs/",
+            "actions": ["s3:GetObject"],
+            "service": "s3",
+        },
+        headers=auth_headers("admin"),
+    )
     assert response.status_code == 200
     assert response.json()["policy"]["Statement"][0]["Action"] == "s3:GetObject"
 
     bad = client.post(
-        "/policy/preview",
+        "/admin/policy/preview",
         json={
             "bucket": "cloudsec.proj.aicgate",
             "prefix": "logs*",
             "actions": ["s3:GetObject"],
         },
-        headers=auth_headers("requester"),
+        headers=auth_headers("admin"),
     )
     assert bad.status_code == 400
+
+
+def test_admin_audit_export_and_security_proof():
+    proof = client.post(
+        "/admin/security-proof",
+        headers=auth_headers("admin"),
+    )
+    assert proof.status_code == 200
+    assert proof.json()["passed"] == 5
+    assert proof.json()["total"] == 5
+
+    csv_resp = client.get(
+        "/admin/audit/export",
+        params={"format": "csv"},
+        headers=auth_headers("admin"),
+    )
+    assert csv_resp.status_code == 200
+    assert "text/csv" in csv_resp.headers["content-type"]
+    assert "SECURITY_PROOF_EXECUTED" in csv_resp.text
+
+    json_resp = client.get(
+        "/admin/audit/export",
+        params={"format": "json"},
+        headers=auth_headers("admin"),
+    )
+    assert json_resp.status_code == 200
+    assert "attachment" in json_resp.headers["content-disposition"]
 
 
 def test_valid_request_creates_pending_request():
@@ -215,6 +271,7 @@ def test_list_my_requests_filters_by_authenticated_requester():
     list_records.assert_called_once_with(
         status=None,
         requester_id="usr-operator-01",
+        org_id="org-aicgate-lab",
     )
 
 
@@ -273,16 +330,25 @@ def test_admin_list_and_review_requests():
 
     assert response.status_code == 200
     assert response.json() == {"requests": records}
-    list_records.assert_called_once_with(status="PENDING")
+    list_records.assert_called_once_with(
+        status="PENDING",
+        org_id="org-aicgate-lab",
+    )
 
     approved = make_pending_request(
         status="APPROVED",
         reviewed_by="usr-admin-01",
     )
-    with patch(
-        "aic_gate.main.review_access_request",
-        return_value=approved,
-    ) as review_mock:
+    with (
+        patch(
+            "aic_gate.main.get_access_request_record",
+            return_value=make_pending_request(),
+        ),
+        patch(
+            "aic_gate.main.review_access_request",
+            return_value=approved,
+        ) as review_mock,
+    ):
         review_resp = client.post(
             "/admin/requests/request-test-123/review",
             json={"decision": "APPROVED"},
@@ -303,9 +369,15 @@ def test_create_session_from_approved_request_sets_no_store_and_audits():
         "expires_at": session.expires_at,
     }
 
-    with patch(
-        "aic_gate.main.create_approved_session",
-        return_value=(session, credentials),
+    with (
+        patch(
+            "aic_gate.main.get_access_request_record",
+            return_value=make_pending_request(status="APPROVED"),
+        ),
+        patch(
+            "aic_gate.main.create_approved_session",
+            return_value=(session, credentials),
+        ),
     ):
         response = client.post(
             "/admin/requests/request-123/create-session",
@@ -333,11 +405,17 @@ def test_list_sessions_scoped_by_role():
         req_resp = client.get("/sessions", headers=auth_headers("requester"))
         assert req_resp.status_code == 200
         assert len(req_resp.json()["sessions"]) == 1
-        list_mock.assert_called_with(requester_id="usr-operator-01")
+        list_mock.assert_called_with(
+            requester_id="usr-operator-01",
+            org_id="org-aicgate-lab",
+        )
 
         admin_resp = client.get("/sessions", headers=auth_headers("admin"))
         assert admin_resp.status_code == 200
-        list_mock.assert_called_with(requester_id=None)
+        list_mock.assert_called_with(
+            requester_id=None,
+            org_id="org-aicgate-lab",
+        )
 
 
 def test_session_idor_prevention_and_lifecycle():

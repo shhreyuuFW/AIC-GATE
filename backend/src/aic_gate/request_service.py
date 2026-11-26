@@ -4,6 +4,7 @@
 from datetime import datetime, timezone
 
 from aic_gate.access_request import create_access_request
+from aic_gate.identity_store import DEFAULT_LAB_ORG_ID
 from aic_gate.request_store import (
     claim_approved_request,
     list_access_requests,
@@ -29,10 +30,12 @@ VALID_REQUEST_STATUSES = {
 def submit_access_request_record(
     request: AccessRequest,
     requester_id: str,
+    org_id: str = DEFAULT_LAB_ORG_ID,
 ):
     record = create_access_request(
         request=request,
         requester_id=requester_id,
+        org_id=org_id,
     )
     save_access_request(record)
     return record
@@ -45,11 +48,16 @@ def get_access_request_record(request_id: str):
 def list_access_request_records(
     status: str | None = None,
     requester_id: str | None = None,
+    org_id: str | None = None,
 ):
     if status is not None and status not in VALID_REQUEST_STATUSES:
         raise ValueError("Invalid request status.")
 
-    return list_access_requests(status=status, requester_id=requester_id)
+    return list_access_requests(
+        status=status,
+        requester_id=requester_id,
+        org_id=org_id,
+    )
 
 
 def review_access_request(
@@ -109,6 +117,8 @@ def create_approved_session(request_id: str):
         actions=record["actions"],
         duration_minutes=int(record["duration_minutes"]),
         reason=record["reason"],
+        service=record.get("service") or "s3",
+        resource_id=record.get("resource_id"),
     )
 
     try:
@@ -116,6 +126,7 @@ def create_approved_session(request_id: str):
             request,
             request_id=request_id,
             requester_id=record.get("requester_id"),
+            org_id=record.get("org_id") or DEFAULT_LAB_ORG_ID,
         )
     except Exception:
         release_claimed_request(request_id)

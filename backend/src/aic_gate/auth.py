@@ -1,4 +1,4 @@
-"""JWT authentication, bcrypt password hashing, and FastAPI RBAC dependencies."""
+"""JWT authentication, bcrypt hashing, optional TOTP MFA, and FastAPI RBAC."""
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -7,10 +7,19 @@ from typing import Literal
 
 import bcrypt
 import jwt
+import pyotp
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from aic_gate.config import get_settings
+from aic_gate.identity_store import (
+    DEFAULT_LAB_ORG_ID,
+    UserAccount,
+    get_user,
+    reset_identity_store,
+    seed_default_lab,
+    update_user_mfa,
+)
 
 UserRole = Literal["requester", "admin"]
 JWT_ALGORITHM = "HS256"
@@ -26,18 +35,14 @@ class AuthenticatedUser:
     display_name: str
     role: UserRole
     department: str
-
-
-@dataclass(frozen=True)
-class _UserRecord:
-    user: AuthenticatedUser
-    password_hash: str
+    org_id: str = DEFAULT_LAB_ORG_ID
+    mfa_enabled: bool = False
 
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password using bcrypt."""
-    if not password:
-        raise ValueError("Password must not be empty.")
+    if not password or len(password) < 6:
+        raise ValueError("Password must be at least 6 characters.")
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
         "utf-8"
     )
@@ -57,72 +62,86 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 @lru_cache(maxsize=1)
-def _get_demo_users() -> dict[str, _UserRecord]:
+def ensure_demo_users_seeded() -> bool:
+    """Seed the default lab org & demo accounts once when enabled."""
     settings = get_settings()
     if not settings.demo_users_enabled:
-        return {}
+        return False
 
-    operator = AuthenticatedUser(
-        user_id="usr-operator-01",
-        username="operator",
-        display_name="Field Operator",
-        role="requester",
-        department="Cloud Operations",
+    seed_default_lab(
+        requester_password_hash=hash_password(settings.demo_requester_password),
+        admin_password_hash=hash_password(settings.demo_admin_password),
     )
-    commander = AuthenticatedUser(
-        user_id="usr-admin-01",
-        username="commander",
-        display_name="Security Commander",
-        role="admin",
-        department="Identity Governance",
-    )
-
-    return {
-        operator.username: _UserRecord(
-            user=operator,
-            password_hash=hash_password(settings.demo_requester_password),
-        ),
-        commander.username: _UserRecord(
-            user=commander,
-            password_hash=hash_password(settings.demo_admin_password),
-        ),
-    }
+    return True
 
 
 def clear_user_cache() -> None:
-    """Clear the cached user registry (for tests after env overrides)."""
-    _get_demo_users.cache_clear()
+    """Reset cached seed flag and in-memory identity store (for tests)."""
+    ensure_demo_users_seeded.cache_clear()
+    reset_identity_store()
 
 
-def authenticate_user(username: str, password: str) -> AuthenticatedUser | None:
-    """Validate credentials and return the authenticated user or None."""
+def account_to_authenticated_user(account: UserAccount) -> AuthenticatedUser:
+    return AuthenticatedUser(
+        user_id=account.user_id,
+        username=account.username,
+        display_name=account.display_name,
+        role=account.role,
+        department=account.department,
+        org_id=account.org_id,
+        mfa_enabled=account.mfa_enabled,
+    )
+
+
+def authenticate_account(username: str, password: str) -> UserAccount | None:
+    """Validate credentials and return the UserAccount, enforcing ACTIVE status."""
+    ensure_demo_users_seeded()
     normalized = username.strip().lower()
     if not normalized or not password:
         return None
 
-    record = _get_demo_users().get(normalized)
-    if record is None:
+    account = get_user(normalized)
+    if account is None:
         return None
 
-    if not verify_password(password, record.password_hash):
+    if not verify_password(password, account.password_hash):
         return None
 
-    return record.user
+    if account.status == "PENDING_APPROVAL":
+        raise PermissionError(
+            "Account is pending organization administrator approval."
+        )
+    if account.status != "ACTIVE":
+        raise PermissionError("Account is not active.")
+
+    return account
+
+
+def authenticate_user(username: str, password: str) -> AuthenticatedUser | None:
+    """Validate credentials and return AuthenticatedUser or None."""
+    try:
+        account = authenticate_account(username, password)
+    except PermissionError:
+        return None
+    return account_to_authenticated_user(account) if account else None
 
 
 def create_access_token(user: AuthenticatedUser) -> tuple[str, int]:
-    """Mint a signed HS256 JWT for an authenticated user and return (token, ttl_seconds)."""
+    """Mint a signed HS256 access JWT and return (token, ttl_seconds)."""
     settings = get_settings()
     now = datetime.now(timezone.utc)
     ttl_seconds = settings.jwt_ttl_minutes * 60
     expires_at = now + timedelta(seconds=ttl_seconds)
 
     payload = {
+        "purpose": "access",
         "sub": user.user_id,
         "username": user.username,
         "display_name": user.display_name,
         "role": user.role,
         "department": user.department,
+        "org_id": user.org_id,
+        "mfa_enabled": user.mfa_enabled,
         "iss": JWT_ISSUER,
         "iat": int(now.timestamp()),
         "exp": int(expires_at.timestamp()),
@@ -133,7 +152,7 @@ def create_access_token(user: AuthenticatedUser) -> tuple[str, int]:
 
 
 def decode_access_token(token: str) -> AuthenticatedUser:
-    """Decode and validate an HS256 JWT, returning the AuthenticatedUser."""
+    """Decode and validate an HS256 access JWT, returning AuthenticatedUser."""
     settings = get_settings()
     try:
         payload = jwt.decode(
@@ -145,6 +164,9 @@ def decode_access_token(token: str) -> AuthenticatedUser:
         )
     except jwt.PyJWTError as exc:
         raise ValueError("Invalid or expired authentication token.") from exc
+
+    if payload.get("purpose", "access") != "access":
+        raise ValueError("Token cannot be used for API access.")
 
     role = payload.get("role")
     if role not in ("requester", "admin"):
@@ -161,13 +183,122 @@ def decode_access_token(token: str) -> AuthenticatedUser:
         display_name=str(payload.get("display_name") or username),
         role=role,
         department=str(payload.get("department") or "Unknown"),
+        org_id=str(payload.get("org_id") or DEFAULT_LAB_ORG_ID),
+        mfa_enabled=bool(payload.get("mfa_enabled", False)),
+    )
+
+
+def create_mfa_challenge_token(account: UserAccount) -> str:
+    """Mint a short-lived single-purpose MFA challenge token (5 min)."""
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    payload = {
+        "purpose": "mfa_challenge",
+        "sub": account.user_id,
+        "username": account.username,
+        "iss": JWT_ISSUER,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=5)).timestamp()),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=JWT_ALGORITHM)
+
+
+def decode_mfa_challenge_token(token: str) -> str:
+    """Validate an MFA challenge JWT and return the username."""
+    settings = get_settings()
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[JWT_ALGORITHM],
+            issuer=JWT_ISSUER,
+            options={"require": ["sub", "username", "purpose", "exp", "iat", "iss"]},
+        )
+    except jwt.PyJWTError as exc:
+        raise ValueError("Invalid or expired MFA challenge token.") from exc
+
+    if payload.get("purpose") != "mfa_challenge":
+        raise ValueError("Invalid MFA challenge token.")
+
+    username = str(payload.get("username", "")).strip().lower()
+    if not username:
+        raise ValueError("Invalid MFA challenge token.")
+    return username
+
+
+def begin_mfa_setup(username: str) -> tuple[str, str]:
+    """Generate a pending TOTP secret and otpauth URI for enrollment."""
+    ensure_demo_users_seeded()
+    account = get_user(username)
+    if account is None:
+        raise LookupError("User not found.")
+
+    secret = pyotp.random_base32()
+    update_user_mfa(
+        account.username,
+        mfa_enabled=account.mfa_enabled,
+        mfa_secret=account.mfa_secret,
+        mfa_pending_secret=secret,
+    )
+    uri = pyotp.TOTP(secret).provisioning_uri(
+        name=account.email,
+        issuer_name="AIC-GATE",
+    )
+    return secret, uri
+
+
+def confirm_mfa_enable(username: str, otp_code: str) -> UserAccount:
+    """Verify the enrollment TOTP code and activate MFA on the user account."""
+    ensure_demo_users_seeded()
+    account = get_user(username)
+    if account is None:
+        raise LookupError("User not found.")
+    if not account.mfa_pending_secret:
+        raise ValueError("No pending MFA setup found. Start MFA setup first.")
+
+    totp = pyotp.TOTP(account.mfa_pending_secret)
+    if not totp.verify(otp_code.strip(), valid_window=1):
+        raise ValueError("Invalid 6-digit authenticator code.")
+
+    return update_user_mfa(
+        account.username,
+        mfa_enabled=True,
+        mfa_secret=account.mfa_pending_secret,
+        mfa_pending_secret=None,
+    )
+
+
+def verify_user_otp(account: UserAccount, otp_code: str) -> bool:
+    """Verify a login TOTP code against the user's enrolled secret."""
+    if not account.mfa_enabled or not account.mfa_secret:
+        return False
+    return pyotp.TOTP(account.mfa_secret).verify(
+        otp_code.strip(),
+        valid_window=1,
+    )
+
+
+def disable_user_mfa(username: str, password: str) -> UserAccount:
+    """Disable optional MFA after verifying the user's current password."""
+    ensure_demo_users_seeded()
+    account = get_user(username)
+    if account is None:
+        raise LookupError("User not found.")
+    if not verify_password(password, account.password_hash):
+        raise PermissionError("Invalid password.")
+
+    return update_user_mfa(
+        account.username,
+        mfa_enabled=False,
+        mfa_secret=None,
+        mfa_pending_secret=None,
     )
 
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> AuthenticatedUser:
-    """FastAPI dependency requiring a valid Bearer JWT."""
+    """FastAPI dependency requiring a valid Bearer access JWT."""
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

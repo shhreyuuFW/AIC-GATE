@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import uuid4
 
+from aic_gate.identity_store import DEFAULT_LAB_ORG_ID
 from aic_gate.validation import AccessRequest
 
 SessionStatus = Literal["ACTIVE", "EXPIRED", "REVOKED"]
@@ -20,6 +21,9 @@ class AccessSession:
     status: SessionStatus = "ACTIVE"
     request_id: str | None = None
     requester_id: str | None = None
+    org_id: str = DEFAULT_LAB_ORG_ID
+    service: str = "s3"
+    resource_id: str | None = None
 
 
 def create_session(
@@ -27,6 +31,7 @@ def create_session(
     now: datetime | None = None,
     request_id: str | None = None,
     requester_id: str | None = None,
+    org_id: str = DEFAULT_LAB_ORG_ID,
 ) -> AccessSession:
     created_at = now or datetime.now(timezone.utc)
 
@@ -42,6 +47,9 @@ def create_session(
         status="ACTIVE",
         request_id=request_id,
         requester_id=requester_id,
+        org_id=org_id,
+        service=request.service,
+        resource_id=request.resource_id,
     )
 
 

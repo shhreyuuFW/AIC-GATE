@@ -8,6 +8,7 @@ from botocore.exceptions import ClientError
 
 from aic_gate.access_request import AccessRequestRecord
 from aic_gate.config import create_boto3_session, get_settings
+from aic_gate.identity_store import DEFAULT_LAB_ORG_ID
 
 
 @lru_cache(maxsize=1)
@@ -78,12 +79,9 @@ def update_access_request(
 def list_access_requests(
     status: str | None = None,
     requester_id: str | None = None,
+    org_id: str | None = None,
 ):
-    """Return requests, optionally filtered by status and/or requester_id.
-
-    Scan pagination is handled here. For a small prototype this is
-    acceptable; a production system should use a suitable index/query.
-    """
+    """Return requests, optionally filtered by status, requester_id, and org_id."""
     table = get_access_requests_table()
     items = []
     scan_args: dict = {}
@@ -115,6 +113,13 @@ def list_access_requests(
             break
 
         scan_args["ExclusiveStartKey"] = last_key
+
+    if org_id is not None:
+        items = [
+            item
+            for item in items
+            if (item.get("org_id") or DEFAULT_LAB_ORG_ID) == org_id
+        ]
 
     return sorted(
         items,

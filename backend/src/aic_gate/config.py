@@ -11,11 +11,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DEFAULT_AWS_REGION = "ap-south-1"
+DEFAULT_AWS_ACCOUNT_ID = "023644376485"
 DEFAULT_AWS_DATA_PROFILE = "aic-gate-logs-reader"
 DEFAULT_AWS_STS_PROFILE = "aic-gate-dev"
 DEFAULT_JIT_ROLE_ARN = "arn:aws:iam::023644376485:role/AICGateJITRole"
 DEFAULT_SESSIONS_TABLE = "AICGateSession"
 DEFAULT_REQUESTS_TABLE = "AICGateAccessRequest"
+DEFAULT_IDENTITY_TABLE = "AICGateIdentity"
+DEFAULT_IDENTITY_BACKEND = "memory"
 DEFAULT_ALLOWED_BUCKETS = "cloudsec.proj.aicgate"
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:8000"
@@ -28,11 +31,14 @@ _DEV_EPHEMERAL_JWT_SECRET = secrets.token_urlsafe(48)
 @dataclass(frozen=True)
 class Settings:
     aws_region: str
+    aws_account_id: str
     aws_data_profile: str
     aws_sts_profile: str
     jit_role_arn: str
     sessions_table_name: str
     requests_table_name: str
+    identity_table_name: str
+    identity_backend: str
     allowed_buckets: frozenset[str]
     use_default_aws_credentials: bool
     environment: str
@@ -84,9 +90,22 @@ def get_settings() -> Settings:
         os.getenv("AIC_GATE_DEMO_USERS_ENABLED", demo_default) == "1"
     )
     raw_cors = os.getenv("AIC_GATE_CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
+    identity_backend = (
+        os.getenv("AIC_GATE_IDENTITY_BACKEND", DEFAULT_IDENTITY_BACKEND)
+        .strip()
+        .lower()
+    )
+    if identity_backend not in ("memory", "dynamodb"):
+        raise RuntimeError(
+            "AIC_GATE_IDENTITY_BACKEND must be 'memory' or 'dynamodb'."
+        )
 
     return Settings(
         aws_region=os.getenv("AWS_REGION", DEFAULT_AWS_REGION),
+        aws_account_id=os.getenv(
+            "AIC_GATE_AWS_ACCOUNT_ID",
+            DEFAULT_AWS_ACCOUNT_ID,
+        ),
         aws_data_profile=os.getenv(
             "AIC_GATE_AWS_PROFILE",
             DEFAULT_AWS_DATA_PROFILE,
@@ -107,6 +126,11 @@ def get_settings() -> Settings:
             "AIC_GATE_REQUESTS_TABLE",
             DEFAULT_REQUESTS_TABLE,
         ),
+        identity_table_name=os.getenv(
+            "AIC_GATE_IDENTITY_TABLE",
+            DEFAULT_IDENTITY_TABLE,
+        ),
+        identity_backend=identity_backend,
         allowed_buckets=frozenset(_parse_csv(raw_buckets)),
         use_default_aws_credentials=use_default_creds,
         environment=environment,

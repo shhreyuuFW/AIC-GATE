@@ -2,6 +2,7 @@
 from datetime import datetime, timezone, timedelta
 
 from aic_gate.aws_client import read_s3_object
+from aic_gate.identity_store import DEFAULT_LAB_ORG_ID
 from aic_gate.session import (
     AccessSession,
     create_session,
@@ -145,10 +146,11 @@ def get_current_session_status(
 
 def list_access_sessions(
     requester_id: str | None = None,
+    org_id: str | None = None,
     now: datetime | None = None,
 ) -> list[AccessSession]:
     """List sessions and lazily reconcile any newly expired records."""
-    sessions = list_sessions(requester_id=requester_id)
+    sessions = list_sessions(requester_id=requester_id, org_id=org_id)
     current_time = now or datetime.now(timezone.utc)
 
     for session in sessions:
@@ -218,6 +220,7 @@ def submit_approved_access_session(
     request: AccessRequest,
     request_id: str,
     requester_id: str | None = None,
+    org_id: str = DEFAULT_LAB_ORG_ID,
 ) -> tuple[AccessSession, dict]:
     """Create a session linked to an approved access request."""
     if not request_id or not request_id.strip():
@@ -228,6 +231,7 @@ def submit_approved_access_session(
         request,
         request_id=request_id,
         requester_id=requester_id,
+        org_id=org_id,
     )
 
     duration_seconds = request.duration_minutes * 60

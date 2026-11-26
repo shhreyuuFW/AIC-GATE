@@ -27,10 +27,12 @@ def fake_session_store(monkeypatch):
         if session_id in store:
             store[session_id].status = status
 
-    def fake_list(requester_id=None):
+    def fake_list(requester_id=None, org_id=None):
         items = list(store.values())
         if requester_id is not None:
             items = [s for s in items if s.requester_id == requester_id]
+        if org_id is not None:
+            items = [s for s in items if s.org_id == org_id]
         return items
 
     monkeypatch.setattr("aic_gate.service.save_session", fake_save)

@@ -4,6 +4,7 @@ from datetime import datetime
 from functools import lru_cache
 
 from aic_gate.config import create_boto3_session, get_settings
+from aic_gate.identity_store import DEFAULT_LAB_ORG_ID
 from aic_gate.session import AccessSession
 
 
@@ -55,6 +56,9 @@ def _item_to_session(item: dict) -> AccessSession:
         status=item["status"],
         request_id=item.get("request_id"),
         requester_id=item.get("requester_id"),
+        org_id=item.get("org_id") or DEFAULT_LAB_ORG_ID,
+        service=item.get("service") or "s3",
+        resource_id=item.get("resource_id"),
     )
 
 
@@ -67,8 +71,11 @@ def load_access_session(session_id: str) -> AccessSession | None:
     return _item_to_session(item)
 
 
-def list_sessions(requester_id: str | None = None) -> list[AccessSession]:
-    """Return sessions from DynamoDB, optionally filtered by requester_id."""
+def list_sessions(
+    requester_id: str | None = None,
+    org_id: str | None = None,
+) -> list[AccessSession]:
+    """Return sessions from DynamoDB, optionally filtered by requester/org."""
     table = get_sessions_table()
     items: list[dict] = []
     scan_args: dict = {}
@@ -90,5 +97,7 @@ def list_sessions(requester_id: str | None = None) -> list[AccessSession]:
         scan_args["ExclusiveStartKey"] = last_key
 
     sessions = [_item_to_session(item) for item in items]
+    if org_id is not None:
+        sessions = [s for s in sessions if s.org_id == org_id]
     sessions.sort(key=lambda s: s.created_at, reverse=True)
     return sessions
