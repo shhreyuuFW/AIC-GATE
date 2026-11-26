@@ -10,13 +10,16 @@ import {
   Moon,
   PlusSquare,
   RefreshCw,
+  Shield,
   ShieldCheck,
   Sun,
   Terminal,
+  Users,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { MfaSettingsModal } from "./MfaSettingsModal";
 
 interface NavItem {
   to: string;
@@ -29,7 +32,7 @@ interface NavItem {
 const CLIENT_NAV: NavItem[] = [
   {
     to: "/client",
-    label: "Access Requests",
+    label: "Resource Catalog",
     code: "01",
     icon: <PlusSquare className="h-4 w-4" />,
     end: true,
@@ -63,27 +66,33 @@ const ADMIN_NAV: NavItem[] = [
     end: true,
   },
   {
+    to: "/admin/team",
+    label: "Org & Members",
+    code: "02",
+    icon: <Users className="h-4 w-4" />,
+  },
+  {
     to: "/admin/sessions",
     label: "Session Telemetry",
-    code: "02",
+    code: "03",
     icon: <Activity className="h-4 w-4" />,
   },
   {
     to: "/admin/graph",
     label: "Entitlement Graph",
-    code: "03",
+    code: "04",
     icon: <GitFork className="h-4 w-4" />,
   },
   {
     to: "/admin/audit-log",
-    label: "Security Audit",
-    code: "04",
+    label: "Audit & Proof",
+    code: "05",
     icon: <FileCode2 className="h-4 w-4" />,
   },
   {
     to: "/admin/guide",
     label: "Commander Guide",
-    code: "05",
+    code: "06",
     icon: <BookOpen className="h-4 w-4" />,
   },
 ];
@@ -107,6 +116,7 @@ export function PortalLayout({
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
+  const [showMfaModal, setShowMfaModal] = useState(false);
 
   useEffect(() => {
     api
@@ -124,7 +134,10 @@ export function PortalLayout({
 
   return (
     <div className="endfield-grid-bg min-h-screen lg:flex">
-      {/* Sidebar */}
+      {showMfaModal && (
+        <MfaSettingsModal onClose={() => setShowMfaModal(false)} />
+      )}
+
       <aside className="flex w-full flex-col border-b border-[var(--border-hair)] bg-[var(--bg-panel)] lg:sticky lg:top-0 lg:h-screen lg:w-68 lg:shrink-0 lg:border-r lg:border-b-0">
         <div className="flex items-center justify-between border-b border-[var(--border-hair)] px-5 py-4">
           <div className="flex items-center gap-3">
@@ -155,7 +168,6 @@ export function PortalLayout({
           </button>
         </div>
 
-        {/* Portal Switcher for Admins */}
         {user?.role === "admin" && (
           <div className="border-b border-[var(--border-hair)] px-4 py-3">
             <div className="font-mono-tech mb-1.5 text-[10px] tracking-widest text-[var(--text-muted)] uppercase">
@@ -188,7 +200,6 @@ export function PortalLayout({
           </div>
         )}
 
-        {/* Navigation */}
         <nav className="flex gap-1 overflow-x-auto px-3 py-3 lg:flex-1 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:py-4">
           {navItems.map((item) => (
             <NavLink
@@ -214,9 +225,8 @@ export function PortalLayout({
           ))}
         </nav>
 
-        {/* Identity + API Status */}
-        <div className="hidden border-t border-[var(--border-hair)] p-4 lg:block">
-          <div className="mb-3 flex items-center justify-between text-[11px]">
+        <div className="hidden space-y-2.5 border-t border-[var(--border-hair)] p-4 lg:block">
+          <div className="flex items-center justify-between text-[11px]">
             <span className="font-mono-tech text-[var(--text-muted)]">
               STS // AP-SOUTH-1
             </span>
@@ -239,29 +249,49 @@ export function PortalLayout({
           </div>
 
           {user && (
-            <div className="flex items-center justify-between border border-[var(--border-hair)] bg-[var(--bg-elevated)] px-3 py-2">
-              <div className="min-w-0">
-                <div className="truncate text-xs font-bold">
-                  {user.display_name}
+            <div className="space-y-2 border border-[var(--border-hair)] bg-[var(--bg-elevated)] p-3">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-bold">
+                    {user.display_name}
+                  </div>
+                  <div className="font-mono-tech truncate text-[10px] text-[var(--text-muted)]">
+                    {user.org_id} · {user.role.toUpperCase()}
+                  </div>
                 </div>
-                <div className="font-mono-tech truncate text-[10px] text-[var(--text-muted)]">
-                  {user.user_id} · {user.role.toUpperCase()}
-                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  title="Sign out"
+                  className="ml-2 p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)]"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
               </div>
               <button
                 type="button"
-                onClick={handleLogout}
-                title="Sign out"
-                className="ml-2 p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)]"
+                onClick={() => setShowMfaModal(true)}
+                className="font-mono-tech flex w-full items-center justify-between border border-[var(--border-hair)] bg-[var(--bg-panel)] px-2.5 py-1.5 text-[10px] font-semibold uppercase hover:border-[var(--border-strong)]"
               >
-                <LogOut className="h-4 w-4" />
+                <span className="flex items-center gap-1.5">
+                  <Shield className="h-3 w-3 text-[var(--accent-cyan)]" />
+                  2FA SECURITY
+                </span>
+                <span
+                  className={
+                    user.mfa_enabled
+                      ? "text-[var(--accent-green)]"
+                      : "text-[var(--text-muted)]"
+                  }
+                >
+                  {user.mfa_enabled ? "ON" : "OPTIONAL"}
+                </span>
               </button>
             </div>
           )}
         </div>
       </aside>
 
-      {/* Main Content */}
       <div className="flex-1">
         <header className="border-b border-[var(--border-hair)] bg-[var(--bg-panel)]/85 px-5 py-5 backdrop-blur-sm lg:px-8">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4">
@@ -278,6 +308,14 @@ export function PortalLayout({
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowMfaModal(true)}
+                className="font-mono-tech inline-flex items-center gap-1.5 border border-[var(--border-hair)] bg-[var(--bg-panel)] px-3 py-2 text-xs lg:hidden"
+              >
+                <Shield className="h-3.5 w-3.5 text-[var(--accent-cyan)]" />
+                2FA
+              </button>
               {onRefresh && (
                 <button
                   type="button"
@@ -300,7 +338,9 @@ export function PortalLayout({
           </div>
         </header>
 
-        <main className="mx-auto max-w-6xl space-y-6 p-5 lg:p-8">{children}</main>
+        <main className="mx-auto max-w-6xl space-y-6 p-5 lg:p-8">
+          {children}
+        </main>
       </div>
     </div>
   );

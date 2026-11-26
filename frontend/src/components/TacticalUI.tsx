@@ -1,7 +1,40 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Check, Copy, Eye, EyeOff, KeyRound, ShieldAlert } from "lucide-react";
-import type { TemporaryCredentials } from "../types/api";
+import type { ServiceType, TemporaryCredentials } from "../types/api";
+
+export function ServiceBadge({ service }: { service?: ServiceType | string }) {
+  const norm = (service || "s3").toLowerCase();
+  const labels: Record<string, { label: string; color: string }> = {
+    s3: {
+      label: "S3 STORAGE",
+      color: "border-[var(--accent-cyan)]/50 text-[var(--accent-cyan)]",
+    },
+    dynamodb: {
+      label: "DYNAMODB",
+      color: "border-[var(--accent-amber)]/50 text-[var(--accent-amber)]",
+    },
+    cloudwatch_logs: {
+      label: "CW LOGS",
+      color: "border-[var(--accent-green)]/50 text-[var(--accent-green)]",
+    },
+    ssm: {
+      label: "SSM PARAM",
+      color: "border-[var(--border-strong)] text-[var(--text-main)]",
+    },
+  };
+  const meta = labels[norm] ?? {
+    label: norm.toUpperCase(),
+    color: "border-[var(--border-hair)] text-[var(--text-muted)]",
+  };
+  return (
+    <span
+      className={`font-mono-tech inline-flex items-center border bg-[var(--bg-panel)] px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase ${meta.color}`}
+    >
+      {meta.label}
+    </span>
+  );
+}
 
 export function StatusBadge({ status }: { status: string }) {
   const normalized = status.toUpperCase();
@@ -13,6 +46,8 @@ export function StatusBadge({ status }: { status: string }) {
     SESSION_CREATED:
       "bg-[var(--accent-green-soft)] text-[var(--accent-green)] border-[var(--accent-green)]/40",
     PENDING:
+      "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)] border-[var(--accent-amber)]/40",
+    PENDING_APPROVAL:
       "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)] border-[var(--accent-amber)]/40",
     CREATING_SESSION:
       "bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)] border-[var(--accent-cyan)]/40",
@@ -28,6 +63,12 @@ export function StatusBadge({ status }: { status: string }) {
       "bg-[var(--accent-red-soft)] text-[var(--accent-red)] border-[var(--accent-red)]/40",
     FAILED:
       "bg-[var(--accent-red-soft)] text-[var(--accent-red)] border-[var(--accent-red)]/40",
+    LOW:
+      "bg-[var(--accent-green-soft)] text-[var(--accent-green)] border-[var(--accent-green)]/40",
+    MEDIUM:
+      "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)] border-[var(--accent-amber)]/40",
+    HIGH:
+      "bg-[var(--accent-red-soft)] text-[var(--accent-red)] border-[var(--accent-red)]/40",
   };
 
   return (
@@ -41,14 +82,14 @@ export function StatusBadge({ status }: { status: string }) {
         className={`h-1.5 w-1.5 rounded-full ${
           normalized === "ACTIVE" || normalized === "SUCCESS"
             ? "bg-[var(--accent-green)] animate-scan-pulse"
-            : normalized === "PENDING"
+            : normalized === "PENDING" || normalized === "PENDING_APPROVAL"
               ? "bg-[var(--accent-amber)]"
               : normalized === "APPROVED" || normalized === "SESSION_CREATED"
                 ? "bg-[var(--accent-cyan)]"
                 : "bg-current"
         }`}
       />
-      {normalized}
+      {normalized.replace("_", " ")}
     </span>
   );
 }
@@ -75,7 +116,6 @@ export function ReticleCard({
       transition={{ duration: 0.22, ease: "easeOut" }}
       className={`endfield-panel relative p-5 ${className}`}
     >
-      {/* Tactical corner reticle ticks */}
       <span className="pointer-events-none absolute top-0 left-0 h-2.5 w-2.5 border-t-2 border-l-2 border-[var(--border-strong)]" />
       <span className="pointer-events-none absolute top-0 right-0 h-2.5 w-2.5 border-t-2 border-r-2 border-[var(--border-strong)]" />
       <span className="pointer-events-none absolute bottom-0 left-0 h-2.5 w-2.5 border-b-2 border-l-2 border-[var(--border-strong)]" />
@@ -130,7 +170,9 @@ export function CountdownBar({
   const total = Math.max(1, end - start);
   const remaining = Math.max(0, end - now);
   const pct =
-    status === "ACTIVE" ? Math.min(100, Math.max(0, (remaining / total) * 100)) : 0;
+    status === "ACTIVE"
+      ? Math.min(100, Math.max(0, (remaining / total) * 100))
+      : 0;
 
   const mins = Math.floor(remaining / 60000);
   const secs = Math.floor((remaining % 60000) / 1000);
@@ -211,10 +253,28 @@ export function NoticeBanner({
   );
 }
 
+function getServiceCliHint(service?: ServiceType, target?: string): string {
+  switch (service) {
+    case "dynamodb":
+      return `aws dynamodb describe-table --table-name ${target || "AICGateSession"}`;
+    case "cloudwatch_logs":
+      return `aws logs describe-log-streams --log-group-name ${target || "/aic-gate/app"}`;
+    case "ssm":
+      return `aws ssm get-parameters-by-path --path ${target || "/aic-gate/config"}`;
+    case "s3":
+    default:
+      return "aws s3 cp s3://cloudsec.proj.aicgate/logs/sample.log -";
+  }
+}
+
 export function CredentialVault({
   credentials,
+  service,
+  target,
 }: {
   credentials: TemporaryCredentials;
+  service?: ServiceType;
+  target?: string;
 }) {
   const [reveal, setReveal] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -318,11 +378,17 @@ export function CredentialVault({
               : "••••••••••••••••••••••••••••••••••••••••"}
           </span>
         </div>
-        <div className="flex flex-wrap justify-between gap-2">
+        <div className="flex flex-wrap justify-between gap-2 border-b border-[var(--border-hair)] pb-1.5">
           <span className="text-[var(--text-muted)]">STS_EXPIRATION</span>
           <span className="text-[var(--accent-amber)]">
             {new Date(credentials.expires_at).toLocaleString()}
           </span>
+        </div>
+        <div className="flex flex-wrap justify-between gap-2">
+          <span className="text-[var(--text-muted)]">CLI TEST</span>
+          <code className="text-[11px] text-[var(--accent-cyan)]">
+            {getServiceCliHint(service, target)}
+          </code>
         </div>
       </div>
 

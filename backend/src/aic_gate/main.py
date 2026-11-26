@@ -272,6 +272,7 @@ def _serve_spa_index():
 @app.get("/client", include_in_schema=False)
 @app.get("/client/{path:path}", include_in_schema=False)
 @app.get("/admin", include_in_schema=False)
+@app.get("/admin/team", include_in_schema=False)
 @app.get("/admin/sessions", include_in_schema=False)
 @app.get("/admin/graph", include_in_schema=False)
 @app.get("/admin/audit-log", include_in_schema=False)

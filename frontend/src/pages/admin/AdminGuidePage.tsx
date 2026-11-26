@@ -7,47 +7,47 @@ import { ReticleCard } from "../../components/TacticalUI";
 const ADMIN_STEPS = [
   {
     code: "PROTOCOL 01",
-    title: "Triage & Verify Incoming Requests",
+    title: "Manage Org Members & Invite Codes",
     summary:
-      "Inspect operator justification, bucket, prefix, and requested actions in the Approval Queue before granting access.",
+      "Share your organization invite code with approved employees, rotate it anytime, and review pending member signups.",
     details: [
-      "Requests start in PENDING state. Approving or rejecting uses a conditional DynamoDB UpdateItem (#status = PENDING) to prevent race conditions across admins.",
-      "Only users with server-side JWT role === 'admin' can access /admin/* routes.",
+      "New signups enter PENDING_APPROVAL and cannot log in until approved under Org & Members.",
+      "Tenant isolation guarantees Commanders only see users, requests, and sessions belonging to their own organization.",
+    ],
+    link: { to: "/admin/team", label: "OPEN ORG & MEMBERS" },
+  },
+  {
+    code: "PROTOCOL 02",
+    title: "Inspect Policies, Risk & Provision STS",
+    summary:
+      "Review automated risk badges (LOW/MEDIUM/HIGH) and inspect the compiled STS policy JSON before approving or provisioning.",
+    details: [
+      "Compiled IAM policy JSON is restricted exclusively to Commanders (/admin/policy/preview) to avoid exposing raw AWS topology to Clients.",
+      "Provisioning uses conditional DynamoDB claiming (APPROVED → CREATING_SESSION → SESSION_CREATED) with rollback on failure.",
     ],
     link: { to: "/admin", label: "OPEN APPROVAL QUEUE" },
   },
   {
-    code: "PROTOCOL 02",
-    title: "Atomic STS Session Provisioning",
-    summary:
-      "Provisioning claims an APPROVED request atomically (APPROVED → CREATING_SESSION → SESSION_CREATED) so duplicate sessions cannot be minted.",
-    details: [
-      "If STS AssumeRole or DynamoDB session persistence fails, the claim automatically rolls back to APPROVED so the request never gets stuck.",
-      "STS assumes AICGateJITRole with an inline session policy restricting both GetObject and ListBucket to the approved prefix.",
-    ],
-    link: { to: "/admin", label: "PROVISION SESSIONS" },
-  },
-  {
     code: "PROTOCOL 03",
-    title: "Monitor Entitlements & Telemetry",
+    title: "Interactive Entitlement Graph",
     summary:
-      "Use Session Telemetry and the Live Entitlement Graph to observe who currently holds active access to which S3 prefixes.",
+      "Filter by service or active status, inspect STS policies inline, and revoke compromised sessions directly from the topology graph.",
     details: [
-      "Expired sessions are reconciled lazily on read and never transition back to ACTIVE.",
-      "The Entitlement Graph is strictly informational — AWS IAM & STS enforce the real authorization boundary on S3.",
+      "Keyboard shortcuts: press [R] to sync, [A] to toggle Active-Only grants, and [Esc] to clear node selection.",
+      "Resource nodes are color-coded across S3, DynamoDB, CloudWatch Logs, and SSM.",
     ],
     link: { to: "/admin/graph", label: "VIEW ENTITLEMENT GRAPH" },
   },
   {
     code: "PROTOCOL 04",
-    title: "Revocation & Audit Investigation",
+    title: "Compliance Export & Security Proof",
     summary:
-      "Review secret-redacted events in the Security Audit Log and revoke compromised sessions immediately.",
+      "Run the 5-check Security Boundary Proof live during reviews and export secret-redacted audit logs as CSV or JSON.",
     details: [
-      "Revoking a session marks DynamoDB REVOKED, blocking new STS key minting and proxied S3 reads immediately.",
-      "Already-issued STS credentials remain valid until their AWS Expiration; keep session durations tight (15–60 min) to limit exposure.",
+      "Audit logs automatically strip secret keys, session tokens, and passwords.",
+      "Revoking a session blocks future STS minting and proxied reads; already-issued STS credentials expire at AWS TTL.",
     ],
-    link: { to: "/admin/audit-log", label: "OPEN AUDIT LOG" },
+    link: { to: "/admin/audit-log", label: "OPEN AUDIT & PROOF" },
   },
 ];
 
@@ -59,7 +59,7 @@ export function AdminGuidePage() {
       portal="admin"
       eyebrow="COMMANDER OPERATIONS MANUAL // ADMIN WORKFLOW"
       title="Admin Commander Guide"
-      description="Governance, atomic provisioning, and incident-response procedures for AIC-GATE administrators."
+      description="Governance, tenant onboarding, policy inspection, and compliance procedures for AIC-GATE administrators."
     >
       <div className="grid gap-4 md:grid-cols-4">
         {ADMIN_STEPS.map((step, index) => (

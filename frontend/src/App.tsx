@@ -8,6 +8,7 @@ import { ClientSessionsPage } from "./pages/client/ClientSessionsPage";
 import { ClientS3TesterPage } from "./pages/client/ClientS3TesterPage";
 import { ClientGuidePage } from "./pages/client/ClientGuidePage";
 import { AdminQueuePage } from "./pages/admin/AdminQueuePage";
+import { AdminOrgPage } from "./pages/admin/AdminOrgPage";
 import { AdminSessionsPage } from "./pages/admin/AdminSessionsPage";
 import { AdminGraphPage } from "./pages/admin/AdminGraphPage";
 import { AdminAuditPage } from "./pages/admin/AdminAuditPage";
@@ -104,6 +105,14 @@ export function App() {
               element={
                 <RequireAuth adminOnly>
                   <AdminQueuePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/admin/team"
+              element={
+                <RequireAuth adminOnly>
+                  <AdminOrgPage />
                 </RequireAuth>
               }
             />

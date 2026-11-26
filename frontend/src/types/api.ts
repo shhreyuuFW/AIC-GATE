@@ -1,4 +1,6 @@
 export type UserRole = "requester" | "admin";
+export type ServiceType = "s3" | "dynamodb" | "cloudwatch_logs" | "ssm";
+export type RiskLevel = "LOW" | "MEDIUM" | "HIGH";
 
 export interface UserProfile {
   user_id: string;
@@ -6,13 +8,58 @@ export interface UserProfile {
   display_name: string;
   role: UserRole;
   department: string;
+  org_id: string;
+  mfa_enabled: boolean;
+}
+
+export interface OrganizationInfo {
+  org_id: string;
+  org_name: string;
+  allowed_domain: string;
+  invite_code: string;
+  created_at: string;
+}
+
+export interface MemberAccount {
+  user_id: string;
+  org_id: string;
+  username: string;
+  email: string;
+  display_name: string;
+  department: string;
+  role: UserRole;
+  status: "ACTIVE" | "PENDING_APPROVAL" | "REJECTED";
+  mfa_enabled: boolean;
+  created_at: string;
 }
 
 export interface LoginResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  user: UserProfile;
+  mfa_required: boolean;
+  mfa_challenge_token?: string;
+  access_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  user?: UserProfile;
+}
+
+export type LoginResult =
+  | { mfaRequired: true; challengeToken: string }
+  | { mfaRequired: false; user: UserProfile };
+
+export interface MfaSetupResponse {
+  secret: string;
+  otpauth_uri: string;
+}
+
+export interface CatalogResourceItem {
+  resource_id: string;
+  service: ServiceType;
+  label: string;
+  description: string;
+  environment: string;
+  allowed_actions: string[];
+  related_resource_ids: string[];
+  default_scope: string;
 }
 
 export type RequestStatus =
@@ -25,11 +72,15 @@ export type RequestStatus =
 export interface AccessRequestItem {
   request_id: string;
   requester_id: string;
+  org_id: string;
+  service: ServiceType;
+  resource_id: string | null;
   bucket: string;
   prefix: string;
   actions: string[];
   duration_minutes: number;
   reason: string;
+  risk_level: RiskLevel;
   status: RequestStatus;
   created_at: string;
   reviewed_at: string | null;
@@ -43,6 +94,9 @@ export interface AccessSessionItem {
   session_id: string;
   request_id: string | null;
   requester_id: string | null;
+  org_id: string;
+  service: ServiceType;
+  resource_id: string | null;
   bucket: string;
   prefix: string;
   actions: string[];
@@ -90,4 +144,19 @@ export interface AuditEventItem {
   resource_id: string | null;
   outcome: "SUCCESS" | "DENIED" | "FAILED";
   details: Record<string, unknown>;
+}
+
+export interface SecurityProofCheck {
+  id: string;
+  control: string;
+  expected: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface SecurityProofResponse {
+  passed: number;
+  total: number;
+  executed_at: string;
+  checks: SecurityProofCheck[];
 }

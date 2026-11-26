@@ -7,12 +7,14 @@ import {
   type ReactNode,
 } from "react";
 import { api, getStoredToken, setStoredToken } from "../lib/api";
-import type { UserProfile } from "../types/api";
+import type { LoginResult, UserProfile } from "../types/api";
 
 interface AuthContextValue {
   user: UserProfile | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<UserProfile>;
+  login: (username: string, password: string) => Promise<LoginResult>;
+  verifyMfa: (challengeToken: string, otpCode: string) => Promise<UserProfile>;
+  applySessionToken: (token: string, profile: UserProfile) => void;
   logout: () => void;
 }
 
@@ -39,12 +41,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const res = await api.login(username, password);
-    setStoredToken(res.access_token);
-    setUser(res.user);
-    return res.user;
-  }, []);
+  const login = useCallback(
+    async (username: string, password: string): Promise<LoginResult> => {
+      const res = await api.login(username, password);
+      if (res.mfa_required && res.mfa_challenge_token) {
+        return {
+          mfaRequired: true,
+          challengeToken: res.mfa_challenge_token,
+        };
+      }
+      if (!res.access_token || !res.user) {
+        throw new Error("Incomplete authentication response");
+      }
+      setStoredToken(res.access_token);
+      setUser(res.user);
+      return { mfaRequired: false, user: res.user };
+    },
+    []
+  );
+
+  const verifyMfa = useCallback(
+    async (challengeToken: string, otpCode: string): Promise<UserProfile> => {
+      const res = await api.verifyMfaLogin(challengeToken, otpCode);
+      if (!res.access_token || !res.user) {
+        throw new Error("MFA verification failed");
+      }
+      setStoredToken(res.access_token);
+      setUser(res.user);
+      return res.user;
+    },
+    []
+  );
+
+  const applySessionToken = useCallback(
+    (token: string, profile: UserProfile) => {
+      setStoredToken(token);
+      setUser(profile);
+    },
+    []
+  );
 
   const logout = useCallback(() => {
     setStoredToken(null);
@@ -52,7 +87,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, verifyMfa, applySessionToken, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

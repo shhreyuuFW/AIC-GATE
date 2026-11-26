@@ -6,6 +6,7 @@ import {
   CredentialVault,
   NoticeBanner,
   ReticleCard,
+  ServiceBadge,
   StatusBadge,
 } from "../../components/TacticalUI";
 import { api } from "../../lib/api";
@@ -16,7 +17,7 @@ export function ClientSessionsPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeCreds, setActiveCreds] = useState<{
-    sessionId: string;
+    session: AccessSessionItem;
     creds: TemporaryCredentials;
   } | null>(null);
   const [notice, setNotice] = useState<{
@@ -43,14 +44,14 @@ export function ClientSessionsPage() {
     loadSessions();
   }, [loadSessions]);
 
-  const handleMintCredentials = async (sessionId: string) => {
-    setBusyId(sessionId);
+  const handleMintCredentials = async (session: AccessSessionItem) => {
+    setBusyId(session.session_id);
     setNotice(null);
     try {
-      const creds = await api.issueCredentials(sessionId);
-      setActiveCreds({ sessionId, creds });
+      const creds = await api.issueCredentials(session.session_id);
+      setActiveCreds({ session, creds });
       setNotice({
-        message: `STS CREDENTIALS ISSUED FOR SESSION ${sessionId.slice(0, 8)}`,
+        message: `STS CREDENTIALS ISSUED FOR SESSION ${session.session_id.slice(0, 8)}`,
         tone: "success",
       });
     } catch (err) {
@@ -111,7 +112,7 @@ export function ClientSessionsPage() {
       {activeCreds && (
         <ReticleCard
           tag="EPHEMERAL VAULT // DO NOT SHARE"
-          title={`Credentials for Session ${activeCreds.sessionId.slice(0, 8)}…`}
+          title={`Credentials for Session ${activeCreds.session.session_id.slice(0, 8)}…`}
           action={
             <button
               type="button"
@@ -122,7 +123,11 @@ export function ClientSessionsPage() {
             </button>
           }
         >
-          <CredentialVault credentials={activeCreds.creds} />
+          <CredentialVault
+            credentials={activeCreds.creds}
+            service={activeCreds.session.service}
+            target={activeCreds.session.bucket}
+          />
         </ReticleCard>
       )}
 
@@ -130,7 +135,7 @@ export function ClientSessionsPage() {
         {loading ? (
           <ReticleCard>
             <p className="font-mono-tech text-xs text-[var(--text-muted)]">
-              SYNCING SESSIONS FROM DYNAMODB...
+              SYNCING SESSIONS...
             </p>
           </ReticleCard>
         ) : sessions.length === 0 ? (
@@ -145,8 +150,13 @@ export function ClientSessionsPage() {
             <ReticleCard
               key={session.session_id}
               tag={`SESSION // ${session.session_id.slice(0, 8)}`}
-              title={`${session.bucket}/${session.prefix}`}
-              action={<StatusBadge status={session.status} />}
+              title={session.prefix}
+              action={
+                <div className="flex items-center gap-1.5">
+                  <ServiceBadge service={session.service} />
+                  <StatusBadge status={session.status} />
+                </div>
+              }
             >
               <div className="space-y-4">
                 <div className="font-mono-tech grid grid-cols-2 gap-2 text-[11px]">
@@ -174,7 +184,7 @@ export function ClientSessionsPage() {
                     disabled={
                       session.status !== "ACTIVE" || busyId === session.session_id
                     }
-                    onClick={() => handleMintCredentials(session.session_id)}
+                    onClick={() => handleMintCredentials(session)}
                     className="endfield-chamfer-sm font-mono-tech inline-flex flex-1 items-center justify-center gap-1.5 bg-[var(--accent-volt)] px-3 py-2 text-[11px] font-bold text-[var(--accent-volt-ink)] uppercase disabled:opacity-40"
                   >
                     <KeyRound className="h-3.5 w-3.5" />

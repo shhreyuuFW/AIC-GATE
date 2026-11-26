@@ -7,34 +7,34 @@ import { ReticleCard } from "../../components/TacticalUI";
 const CLIENT_STEPS = [
   {
     code: "STEP 01",
-    title: "Define Minimal S3 Scope",
+    title: "Org Onboarding & Optional 2FA",
     summary:
-      "Specify only the exact bucket, folder prefix (e.g. logs/), actions, and duration (15–60 min) needed for your task.",
+      "Join your organization with an invite code and wait for Commander approval. Optionally enroll an authenticator app via 2FA SECURITY.",
     details: [
-      "Wildcards (*, ?) and path traversal (../) are blocked automatically at both the API validator and STS policy compiler.",
-      "Inspect the Live Policy Preview panel on the Access Requests page to confirm the exact IAM statements before submitting.",
+      "New member signups enter PENDING_APPROVAL until an Organization Admin approves the account.",
+      "TOTP 2FA (Google Authenticator / Authy) is optional and can be toggled anytime from the sidebar.",
     ],
-    link: { to: "/client", label: "OPEN REQUEST BUILDER" },
+    link: { to: "/client", label: "OPEN RESOURCE CATALOG" },
   },
   {
     code: "STEP 02",
-    title: "Await Commander Approval",
+    title: "Pick From Approved Resource Catalog",
     summary:
-      "Submitted requests enter PENDING state in DynamoDB. No AWS credentials exist until an Administrator approves and provisions the session.",
+      "Select from S3, DynamoDB, CloudWatch Logs, or SSM Parameter Store without needing to know raw ARNs or bucket names.",
     details: [
-      "Your requests table updates status from PENDING → APPROVED → SESSION_CREATED.",
-      "Requesters cannot self-approve or access other operators' requests (enforced server-side via JWT identity checks).",
+      "Related service chips let you pivot smoothly across correlated resources (e.g., S3 Logs → CloudWatch API Logs).",
+      "Requests start in PENDING status until reviewed and provisioned by your Organization Commander.",
     ],
-    link: { to: "/client", label: "CHECK MY REQUESTS" },
+    link: { to: "/client", label: "CREATE REQUEST" },
   },
   {
     code: "STEP 03",
     title: "Mint & Export Temporary STS Keys",
     summary:
-      "Once your session is ACTIVE, open My Sessions & Keys to mint short-lived AWS credentials bound to your remaining TTL.",
+      "Once provisioned, open My Sessions & Keys to mint short-lived AWS STS credentials tailored to your approved service.",
     details: [
-      "Use COPY POWERSHELL or COPY BASH inside the Credential Vault to export AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_SESSION_TOKEN into your terminal.",
-      "Test directly with AWS CLI: aws s3 cp s3://cloudsec.proj.aicgate/logs/sample.log -",
+      "Copy ready-to-run PowerShell or Bash exports plus service-specific AWS CLI test commands.",
+      "Secrets remain strictly in memory and are never persisted to browser storage.",
     ],
     link: { to: "/client/sessions", label: "OPEN MY SESSIONS" },
   },
@@ -42,10 +42,10 @@ const CLIENT_STEPS = [
     code: "STEP 04",
     title: "Verify Least-Privilege Boundaries",
     summary:
-      "Confirm both positive access (logs/sample.log) and negative denial (restricted/secret.txt) using the S3 Scope Tester or AWS CLI.",
+      "Confirm positive reads (logs/sample.log) and denied reads (restricted/secret.txt) via the S3 Scope Tester or AWS CLI.",
     details: [
-      "AWS evaluates the intersection of AICGateJITRole and your session policy on every S3 request.",
-      "When finished early, click REVOKE to block future credential minting and proxied reads (already-minted STS keys expire at STS_EXPIRATION).",
+      "Click REVOKE when finished early to stop future credential minting and proxied reads.",
+      "Already-minted STS credentials expire automatically at STS_EXPIRATION.",
     ],
     link: { to: "/client/s3-tester", label: "LAUNCH S3 TESTER" },
   },
@@ -59,7 +59,7 @@ export function ClientGuidePage() {
       portal="client"
       eyebrow="OPERATOR FIELD MANUAL // CLIENT WORKFLOW"
       title="Client Operator Guide"
-      description="Step-by-step protocol for requesting, receiving, and verifying Just-in-Time AWS S3 access."
+      description="Step-by-step protocol for org onboarding, 2FA, and requesting Just-in-Time multi-service AWS access."
     >
       <div className="grid gap-4 md:grid-cols-4">
         {CLIENT_STEPS.map((step, index) => (
