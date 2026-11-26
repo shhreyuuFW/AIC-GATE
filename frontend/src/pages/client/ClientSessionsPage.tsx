@@ -10,6 +10,7 @@ import {
   StatusBadge,
 } from "../../components/TacticalUI";
 import { api } from "../../lib/api";
+import { useAutoSync } from "../../hooks/useAutoSync";
 import type { AccessSessionItem, TemporaryCredentials } from "../../types/api";
 
 export function ClientSessionsPage() {
@@ -25,24 +26,29 @@ export function ClientSessionsPage() {
     tone: "info" | "success" | "error";
   } | null>(null);
 
-  const loadSessions = useCallback(async () => {
-    setLoading(true);
+  const loadSessions = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await api.listSessions();
       setSessions(res.sessions);
     } catch (err) {
-      setNotice({
-        message: err instanceof Error ? err.message : "Unable to load sessions",
-        tone: "error",
-      });
+      if (!silent) {
+        setNotice({
+          message:
+            err instanceof Error ? err.message : "Unable to load sessions",
+          tone: "error",
+        });
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadSessions();
+    void loadSessions(false);
   }, [loadSessions]);
+
+  useAutoSync(() => loadSessions(true), 8000);
 
   const handleMintCredentials = async (session: AccessSessionItem) => {
     setBusyId(session.session_id);

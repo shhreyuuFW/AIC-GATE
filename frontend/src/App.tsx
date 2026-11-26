@@ -9,17 +9,27 @@ import { ClientS3TesterPage } from "./pages/client/ClientS3TesterPage";
 import { ClientGuidePage } from "./pages/client/ClientGuidePage";
 import { AdminQueuePage } from "./pages/admin/AdminQueuePage";
 import { AdminOrgPage } from "./pages/admin/AdminOrgPage";
+import { AdminRolesPage } from "./pages/admin/AdminRolesPage";
 import { AdminSessionsPage } from "./pages/admin/AdminSessionsPage";
 import { AdminGraphPage } from "./pages/admin/AdminGraphPage";
 import { AdminAuditPage } from "./pages/admin/AdminAuditPage";
 import { AdminGuidePage } from "./pages/admin/AdminGuidePage";
+import { MasterPortalPage } from "./pages/master/MasterPortalPage";
+import { ProfilePage } from "./pages/ProfilePage";
+import type { UserRole } from "./types/api";
+
+function homeForRole(role: UserRole): string {
+  if (role === "platform_admin") return "/master";
+  if (role === "admin") return "/admin";
+  return "/client";
+}
 
 function RequireAuth({
   children,
-  adminOnly = false,
+  allowedRoles,
 }: {
   children: ReactNode;
-  adminOnly?: boolean;
+  allowedRoles?: UserRole[];
 }) {
   const { user, loading } = useAuth();
 
@@ -35,8 +45,8 @@ function RequireAuth({
     return <Navigate to="/login" replace />;
   }
 
-  if (adminOnly && user.role !== "admin") {
-    return <Navigate to="/client" replace />;
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return <Navigate to={homeForRole(user.role)} replace />;
   }
 
   return <>{children}</>;
@@ -53,7 +63,7 @@ function HomeRedirect() {
     return <Navigate to="/login" replace />;
   }
 
-  return <Navigate to={user.role === "admin" ? "/admin" : "/client"} replace />;
+  return <Navigate to={homeForRole(user.role)} replace />;
 }
 
 export function App() {
@@ -69,7 +79,7 @@ export function App() {
             <Route
               path="/client"
               element={
-                <RequireAuth>
+                <RequireAuth allowedRoles={["requester", "admin"]}>
                   <ClientOverviewPage />
                 </RequireAuth>
               }
@@ -77,24 +87,36 @@ export function App() {
             <Route
               path="/client/sessions"
               element={
-                <RequireAuth>
+                <RequireAuth allowedRoles={["requester", "admin"]}>
                   <ClientSessionsPage />
                 </RequireAuth>
               }
             />
             <Route
-              path="/client/s3-tester"
+              path="/client/tester"
               element={
-                <RequireAuth>
+                <RequireAuth allowedRoles={["requester", "admin"]}>
                   <ClientS3TesterPage />
                 </RequireAuth>
               }
             />
             <Route
+              path="/client/s3-tester"
+              element={<Navigate to="/client/tester" replace />}
+            />
+            <Route
               path="/client/guide"
               element={
-                <RequireAuth>
+                <RequireAuth allowedRoles={["requester", "admin"]}>
                   <ClientGuidePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/client/profile"
+              element={
+                <RequireAuth allowedRoles={["requester", "admin"]}>
+                  <ProfilePage portal="client" />
                 </RequireAuth>
               }
             />
@@ -103,7 +125,7 @@ export function App() {
             <Route
               path="/admin"
               element={
-                <RequireAuth adminOnly>
+                <RequireAuth allowedRoles={["admin"]}>
                   <AdminQueuePage />
                 </RequireAuth>
               }
@@ -111,15 +133,23 @@ export function App() {
             <Route
               path="/admin/team"
               element={
-                <RequireAuth adminOnly>
+                <RequireAuth allowedRoles={["admin"]}>
                   <AdminOrgPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/admin/roles"
+              element={
+                <RequireAuth allowedRoles={["admin"]}>
+                  <AdminRolesPage />
                 </RequireAuth>
               }
             />
             <Route
               path="/admin/sessions"
               element={
-                <RequireAuth adminOnly>
+                <RequireAuth allowedRoles={["admin"]}>
                   <AdminSessionsPage />
                 </RequireAuth>
               }
@@ -127,7 +157,7 @@ export function App() {
             <Route
               path="/admin/graph"
               element={
-                <RequireAuth adminOnly>
+                <RequireAuth allowedRoles={["admin"]}>
                   <AdminGraphPage />
                 </RequireAuth>
               }
@@ -135,7 +165,7 @@ export function App() {
             <Route
               path="/admin/audit-log"
               element={
-                <RequireAuth adminOnly>
+                <RequireAuth allowedRoles={["admin"]}>
                   <AdminAuditPage />
                 </RequireAuth>
               }
@@ -143,8 +173,34 @@ export function App() {
             <Route
               path="/admin/guide"
               element={
-                <RequireAuth adminOnly>
+                <RequireAuth allowedRoles={["admin"]}>
                   <AdminGuidePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/admin/profile"
+              element={
+                <RequireAuth allowedRoles={["admin"]}>
+                  <ProfilePage portal="admin" />
+                </RequireAuth>
+              }
+            />
+
+            {/* Platform Master Admin Portal */}
+            <Route
+              path="/master"
+              element={
+                <RequireAuth allowedRoles={["platform_admin"]}>
+                  <MasterPortalPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/master/profile"
+              element={
+                <RequireAuth allowedRoles={["platform_admin"]}>
+                  <ProfilePage portal="master" />
                 </RequireAuth>
               }
             />
@@ -156,5 +212,4 @@ export function App() {
     </ThemeProvider>
   );
 }
-
 export default App;

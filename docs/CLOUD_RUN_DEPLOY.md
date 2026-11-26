@@ -27,12 +27,15 @@ Create a dedicated least-privilege IAM user (e.g., `AICGateCloudRunBackend`) wit
         "dynamodb:PutItem",
         "dynamodb:GetItem",
         "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:BatchWriteItem",
         "dynamodb:Scan",
         "dynamodb:DescribeTable"
       ],
       "Resource": [
         "arn:aws:dynamodb:ap-south-1:023644376485:table/AICGateSession",
-        "arn:aws:dynamodb:ap-south-1:023644376485:table/AICGateAccessRequest"
+        "arn:aws:dynamodb:ap-south-1:023644376485:table/AICGateAccessRequest",
+        "arn:aws:dynamodb:ap-south-1:023644376485:table/AICGateIdentity"
       ]
     },
     {
@@ -53,7 +56,12 @@ Create a dedicated least-privilege IAM user (e.g., `AICGateCloudRunBackend`) wit
 
 Also update **`AICGateJITRole`**'s trust relationship so `AICGateCloudRunBackend` is allowed to assume it (in addition to `AIC_GATE_DEV`).
 
-Ensure the DynamoDB table **`AICGateAccessRequest`** exists in `ap-south-1` with partition key `request_id` (`String`).
+Ensure these three DynamoDB tables exist in `ap-south-1`:
+- **`AICGateSession`** — partition key `session_id` (`String`)
+- **`AICGateAccessRequest`** — partition key `request_id` (`String`)
+- **`AICGateIdentity`** — partition key `pk` (`String`) *(stores Organizations, Members, Custom Roles, Retired Invite Ledger, Notifications, and Master Tickets so zero data is ever lost across Cloud Run redeploys or scale-to-zero!)*
+
+> **Migrating local data to DynamoDB:** Once `AICGateIdentity` exists, run `python scripts/sync_identity_to_dynamodb.py` locally to upload your saved `.local_data/aic_gate_identity.json` records directly into AWS DynamoDB.
 
 ---
 
@@ -107,6 +115,8 @@ done
    - `AIC_GATE_JIT_ROLE_ARN=arn:aws:iam::023644376485:role/AICGateJITRole`
    - `AIC_GATE_SESSIONS_TABLE=AICGateSession`
    - `AIC_GATE_REQUESTS_TABLE=AICGateAccessRequest`
+   - `AIC_GATE_IDENTITY_TABLE=AICGateIdentity`
+   - `AIC_GATE_IDENTITY_BACKEND=dynamodb`
    - `AIC_GATE_ALLOWED_BUCKETS=cloudsec.proj.aicgate`
 6. Under **Secrets** (Reference as Environment Variable):
    - `AWS_ACCESS_KEY_ID` → `aic-gate-aws-access-key-id:latest`
@@ -114,18 +124,25 @@ done
    - `AIC_GATE_JWT_SECRET` → `aic-gate-jwt-secret:latest`
    - `AIC_GATE_DEMO_REQUESTER_PASSWORD` → `aic-gate-operator-pass:latest`
    - `AIC_GATE_DEMO_ADMIN_PASSWORD` → `aic-gate-commander-pass:latest`
-7. Deploy. Once Cloud Run outputs your HTTPS URL (e.g., `https://aic-gate-xxxx.a.run.app`), edit the service once more to add:
-   - `AIC_GATE_CORS_ORIGINS=https://aic-gate-xxxx.a.run.app`
+   - `AIC_GATE_DEMO_MASTER_PASSWORD` *(optional env/secret; defaults to `master-demo-pass` in dev, set in prod if `AIC_GATE_DEMO_USERS_ENABLED=1`)*
+7. Deploy. Once Cloud Run outputs your HTTPS URL (e.g., `https://aic-gate-cloud-216638814215.asia-south1.run.app`), edit the service once more to add:
+   - `AIC_GATE_CORS_ORIGINS=https://aic-gate-cloud-216638814215.asia-south1.run.app`
 
-### Option B — Deploy via `gcloud` CLI
+### Option B — Deploy via Google Cloud Shell (`gcloud run deploy`)
 
 ```bash
-gcloud run deploy aic-gate \
+git clone https://github.com/shhreyuuFW/AIC-GATE.git
+cd AIC-GATE
+git checkout feat/v3-multi-service-org-mfa   # or main once merged
+
+gcloud config set project autumn-7
+gcloud run deploy aic-gate-cloud \
   --source . \
   --region asia-south1 \
+  --service-account aic-gate-runner@autumn-7.iam.gserviceaccount.com \
   --allow-unauthenticated \
   --port 8080 \
-  --set-env-vars "AIC_GATE_ENV=production,AIC_GATE_DEMO_USERS_ENABLED=1,AIC_GATE_USE_DEFAULT_AWS_CREDS=1,AWS_REGION=ap-south-1,AIC_GATE_JIT_ROLE_ARN=arn:aws:iam::023644376485:role/AICGateJITRole,AIC_GATE_SESSIONS_TABLE=AICGateSession,AIC_GATE_REQUESTS_TABLE=AICGateAccessRequest,AIC_GATE_ALLOWED_BUCKETS=cloudsec.proj.aicgate" \
+  --set-env-vars "AIC_GATE_ENV=production,AIC_GATE_DEMO_USERS_ENABLED=1,AIC_GATE_USE_DEFAULT_AWS_CREDS=1,AWS_REGION=ap-south-1,AIC_GATE_JIT_ROLE_ARN=arn:aws:iam::023644376485:role/AICGateJITRole,AIC_GATE_SESSIONS_TABLE=AICGateSession,AIC_GATE_REQUESTS_TABLE=AICGateAccessRequest,AIC_GATE_IDENTITY_TABLE=AICGateIdentity,AIC_GATE_IDENTITY_BACKEND=dynamodb,AIC_GATE_ALLOWED_BUCKETS=cloudsec.proj.aicgate,AIC_GATE_CORS_ORIGINS=https://aic-gate-cloud-216638814215.asia-south1.run.app" \
   --set-secrets "AWS_ACCESS_KEY_ID=aic-gate-aws-access-key-id:latest,AWS_SECRET_ACCESS_KEY=aic-gate-aws-secret-access-key:latest,AIC_GATE_JWT_SECRET=aic-gate-jwt-secret:latest,AIC_GATE_DEMO_REQUESTER_PASSWORD=aic-gate-operator-pass:latest,AIC_GATE_DEMO_ADMIN_PASSWORD=aic-gate-commander-pass:latest"
 ```
 

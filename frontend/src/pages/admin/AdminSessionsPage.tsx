@@ -8,6 +8,7 @@ import {
   StatusBadge,
 } from "../../components/TacticalUI";
 import { api } from "../../lib/api";
+import { useAutoSync } from "../../hooks/useAutoSync";
 import type { AccessSessionItem } from "../../types/api";
 
 export function AdminSessionsPage() {
@@ -19,24 +20,29 @@ export function AdminSessionsPage() {
     tone: "info" | "success" | "error";
   } | null>(null);
 
-  const loadSessions = useCallback(async () => {
-    setLoading(true);
+  const loadSessions = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await api.listSessions();
       setSessions(res.sessions);
     } catch (err) {
-      setNotice({
-        message: err instanceof Error ? err.message : "Failed to load sessions",
-        tone: "error",
-      });
+      if (!silent) {
+        setNotice({
+          message:
+            err instanceof Error ? err.message : "Failed to load sessions",
+          tone: "error",
+        });
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadSessions();
+    void loadSessions(false);
   }, [loadSessions]);
+
+  useAutoSync(() => loadSessions(true), 8000);
 
   const handleRevoke = async (sessionId: string) => {
     if (
@@ -166,8 +172,18 @@ export function AdminSessionsPage() {
                     <td className="font-mono-tech px-3 py-3 text-[var(--accent-cyan)]">
                       {session.session_id.slice(0, 8)}…
                     </td>
-                    <td className="font-mono-tech px-3 py-3">
-                      {session.requester_id || "legacy-unattributed"}
+                    <td className="px-3 py-3">
+                      <div className="font-bold">
+                        {session.requester_display_name ||
+                          session.requester_username ||
+                          session.requester_id ||
+                          "legacy-unattributed"}
+                      </div>
+                      {session.requester_username && (
+                        <div className="font-mono-tech text-[10px] text-[var(--text-muted)]">
+                          @{session.requester_username}
+                        </div>
+                      )}
                     </td>
                     <td className="font-mono-tech px-3 py-3">
                       {session.bucket}/{session.prefix}

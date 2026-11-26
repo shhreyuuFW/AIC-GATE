@@ -38,6 +38,8 @@ class AccessRequestRecord:
     service: str = "s3"
     resource_id: str | None = None
     risk_level: str = "LOW"
+    requester_username: str = ""
+    requester_display_name: str = ""
 
 
 def create_access_request(
@@ -45,6 +47,8 @@ def create_access_request(
     requester_id: str,
     now: datetime | None = None,
     org_id: str = DEFAULT_LAB_ORG_ID,
+    requester_username: str = "",
+    requester_display_name: str = "",
 ) -> AccessRequestRecord:
     """Validate and create a pending request without issuing credentials."""
     validate_request(request)
@@ -70,4 +74,6 @@ def create_access_request(
             request.actions,
             request.duration_minutes,
         ),
+        requester_username=requester_username,
+        requester_display_name=requester_display_name,
     )

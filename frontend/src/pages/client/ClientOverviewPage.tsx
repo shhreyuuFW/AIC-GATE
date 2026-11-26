@@ -8,6 +8,7 @@ import {
   StatusBadge,
 } from "../../components/TacticalUI";
 import { api } from "../../lib/api";
+import { useAutoSync } from "../../hooks/useAutoSync";
 import type { AccessRequestItem, CatalogResourceItem } from "../../types/api";
 
 export function ClientOverviewPage() {
@@ -31,8 +32,8 @@ export function ClientOverviewPage() {
     setActions([...item.allowed_actions]);
   };
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [catRes, reqRes] = await Promise.all([
         api.getCatalog(),
@@ -53,19 +54,23 @@ export function ClientOverviewPage() {
         return first;
       });
     } catch (err) {
-      setNotice({
-        message:
-          err instanceof Error ? err.message : "Failed to load catalog",
-        tone: "error",
-      });
+      if (!silent) {
+        setNotice({
+          message:
+            err instanceof Error ? err.message : "Failed to load catalog",
+          tone: "error",
+        });
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadData();
+    void loadData(false);
   }, [loadData]);
+
+  useAutoSync(() => loadData(true), 8000);
 
   const toggleAction = (action: string) => {
     setActions((prev) =>

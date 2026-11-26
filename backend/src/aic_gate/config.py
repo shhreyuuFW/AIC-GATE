@@ -18,7 +18,8 @@ DEFAULT_JIT_ROLE_ARN = "arn:aws:iam::023644376485:role/AICGateJITRole"
 DEFAULT_SESSIONS_TABLE = "AICGateSession"
 DEFAULT_REQUESTS_TABLE = "AICGateAccessRequest"
 DEFAULT_IDENTITY_TABLE = "AICGateIdentity"
-DEFAULT_IDENTITY_BACKEND = "memory"
+DEFAULT_IDENTITY_BACKEND = "file"
+DEFAULT_IDENTITY_FILE = ".local_data/aic_gate_identity.json"
 DEFAULT_ALLOWED_BUCKETS = "cloudsec.proj.aicgate"
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:8000"
@@ -39,6 +40,7 @@ class Settings:
     requests_table_name: str
     identity_table_name: str
     identity_backend: str
+    identity_file_path: str
     allowed_buckets: frozenset[str]
     use_default_aws_credentials: bool
     environment: str
@@ -47,6 +49,7 @@ class Settings:
     demo_users_enabled: bool
     demo_requester_password: str
     demo_admin_password: str
+    demo_master_password: str
     cors_origins: tuple[str, ...]
 
 
@@ -95,10 +98,14 @@ def get_settings() -> Settings:
         .strip()
         .lower()
     )
-    if identity_backend not in ("memory", "dynamodb"):
+    if identity_backend not in ("file", "memory", "dynamodb"):
         raise RuntimeError(
-            "AIC_GATE_IDENTITY_BACKEND must be 'memory' or 'dynamodb'."
+            "AIC_GATE_IDENTITY_BACKEND must be 'file', 'memory', or 'dynamodb'."
         )
+    identity_file_path = (
+        os.getenv("AIC_GATE_IDENTITY_FILE", DEFAULT_IDENTITY_FILE).strip()
+        or DEFAULT_IDENTITY_FILE
+    )
 
     return Settings(
         aws_region=os.getenv("AWS_REGION", DEFAULT_AWS_REGION),
@@ -131,6 +138,7 @@ def get_settings() -> Settings:
             DEFAULT_IDENTITY_TABLE,
         ),
         identity_backend=identity_backend,
+        identity_file_path=identity_file_path,
         allowed_buckets=frozenset(_parse_csv(raw_buckets)),
         use_default_aws_credentials=use_default_creds,
         environment=environment,
@@ -144,6 +152,10 @@ def get_settings() -> Settings:
         demo_admin_password=os.getenv(
             "AIC_GATE_DEMO_ADMIN_PASSWORD",
             "commander-demo-pass",
+        ),
+        demo_master_password=os.getenv(
+            "AIC_GATE_DEMO_MASTER_PASSWORD",
+            "master-demo-pass",
         ),
         cors_origins=_parse_csv(raw_cors),
     )

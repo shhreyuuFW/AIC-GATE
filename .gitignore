@@ -232,3 +232,6 @@ frontend/node_modules/
 frontend/dist/
 *.tsbuildinfo
 !frontend/src/lib/
+
+# Persistent local dev identity store (contains user password hashes)
+.local_data/

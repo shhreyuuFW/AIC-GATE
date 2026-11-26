@@ -2,7 +2,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   Activity,
+  Award,
   BookOpen,
+  Building2,
   FileCode2,
   GitFork,
   KeyRound,
@@ -14,12 +16,15 @@ import {
   ShieldCheck,
   Sun,
   Terminal,
+  UserCog,
   Users,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { MfaSettingsModal } from "./MfaSettingsModal";
+import { NotificationBellAndDrawer } from "./NotificationDrawer";
+import { BrandLogo, RoleBadge, UserAvatar } from "./TacticalUI";
 
 interface NavItem {
   to: string;
@@ -44,15 +49,21 @@ const CLIENT_NAV: NavItem[] = [
     icon: <KeyRound className="h-4 w-4" />,
   },
   {
-    to: "/client/s3-tester",
-    label: "S3 Scope Tester",
+    to: "/client/tester",
+    label: "Multi-Service Lab",
     code: "03",
     icon: <Terminal className="h-4 w-4" />,
   },
   {
+    to: "/client/profile",
+    label: "Access Key Profile",
+    code: "04",
+    icon: <UserCog className="h-4 w-4" />,
+  },
+  {
     to: "/client/guide",
     label: "Operator Guide",
-    code: "04",
+    code: "05",
     icon: <BookOpen className="h-4 w-4" />,
   },
 ];
@@ -72,28 +83,56 @@ const ADMIN_NAV: NavItem[] = [
     icon: <Users className="h-4 w-4" />,
   },
   {
+    to: "/admin/roles",
+    label: "Role Management",
+    code: "03",
+    icon: <Award className="h-4 w-4" />,
+  },
+  {
     to: "/admin/sessions",
     label: "Session Telemetry",
-    code: "03",
+    code: "04",
     icon: <Activity className="h-4 w-4" />,
   },
   {
     to: "/admin/graph",
     label: "Entitlement Graph",
-    code: "04",
+    code: "05",
     icon: <GitFork className="h-4 w-4" />,
   },
   {
     to: "/admin/audit-log",
     label: "Audit & Proof",
-    code: "05",
+    code: "06",
     icon: <FileCode2 className="h-4 w-4" />,
+  },
+  {
+    to: "/admin/profile",
+    label: "Access Key Profile",
+    code: "07",
+    icon: <UserCog className="h-4 w-4" />,
   },
   {
     to: "/admin/guide",
     label: "Commander Guide",
-    code: "06",
+    code: "08",
     icon: <BookOpen className="h-4 w-4" />,
+  },
+];
+
+const MASTER_NAV: NavItem[] = [
+  {
+    to: "/master",
+    label: "Control Plane",
+    code: "01",
+    icon: <Building2 className="h-4 w-4" />,
+    end: true,
+  },
+  {
+    to: "/master/profile",
+    label: "Access Key Profile",
+    code: "02",
+    icon: <UserCog className="h-4 w-4" />,
   },
 ];
 
@@ -105,7 +144,7 @@ export function PortalLayout({
   onRefresh,
   children,
 }: {
-  portal: "client" | "admin";
+  portal: "client" | "admin" | "master";
   title: string;
   eyebrow: string;
   description: string;
@@ -118,6 +157,8 @@ export function PortalLayout({
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [showMfaModal, setShowMfaModal] = useState(false);
 
+  const profileRoute = `/${portal}/profile`;
+
   useEffect(() => {
     api
       .health()
@@ -125,7 +166,12 @@ export function PortalLayout({
       .catch(() => setApiOnline(false));
   }, []);
 
-  const navItems = portal === "admin" ? ADMIN_NAV : CLIENT_NAV;
+  const navItems =
+    portal === "master"
+      ? MASTER_NAV
+      : portal === "admin"
+        ? ADMIN_NAV
+        : CLIENT_NAV;
 
   const handleLogout = () => {
     logout();
@@ -138,18 +184,20 @@ export function PortalLayout({
         <MfaSettingsModal onClose={() => setShowMfaModal(false)} />
       )}
 
-      <aside className="flex w-full flex-col border-b border-[var(--border-hair)] bg-[var(--bg-panel)] lg:sticky lg:top-0 lg:h-screen lg:w-68 lg:shrink-0 lg:border-r lg:border-b-0">
+      <aside className="flex w-full flex-col border-b border-[var(--border-hair)] bg-[var(--bg-panel)] lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:shrink-0 lg:border-r lg:border-b-0">
         <div className="flex items-center justify-between border-b border-[var(--border-hair)] px-5 py-4">
           <div className="flex items-center gap-3">
-            <div className="endfield-chamfer-sm flex h-9 w-9 items-center justify-center bg-[var(--accent-volt)] font-mono-tech text-base font-bold text-[var(--accent-volt-ink)]">
-              A
-            </div>
+            <BrandLogo size="md" />
             <div>
               <div className="font-mono-tech text-sm font-bold tracking-wider">
                 AIC-GATE
               </div>
               <div className="font-mono-tech text-[10px] tracking-widest text-[var(--text-muted)] uppercase">
-                {portal === "admin" ? "COMMANDER // ADMIN" : "OPERATOR // CLIENT"}
+                {portal === "master"
+                  ? "PLATFORM // MASTER"
+                  : portal === "admin"
+                    ? "COMMANDER // ADMIN"
+                    : "OPERATOR // CLIENT"}
               </div>
             </div>
           </div>
@@ -249,51 +297,75 @@ export function PortalLayout({
           </div>
 
           {user && (
-            <div className="space-y-2 border border-[var(--border-hair)] bg-[var(--bg-elevated)] p-3">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0">
-                  <div className="truncate text-xs font-bold">
-                    {user.display_name}
+            <div className="space-y-2.5 border border-[var(--border-hair)] bg-[var(--bg-elevated)] p-3">
+              <div className="flex items-start justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(profileRoute)}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left hover:opacity-90"
+                  title="Open Access Key Profile"
+                >
+                  <UserAvatar
+                    avatar={user.avatar}
+                    displayName={user.display_name}
+                    size="md"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-bold text-[var(--text-main)]">
+                      {user.display_name}
+                    </div>
+                    <div className="font-mono-tech truncate text-[10px] text-[var(--text-muted)]">
+                      @{user.username}
+                    </div>
                   </div>
-                  <div className="font-mono-tech truncate text-[10px] text-[var(--text-muted)]">
-                    {user.org_id} · {user.role.toUpperCase()}
-                  </div>
-                </div>
+                </button>
                 <button
                   type="button"
                   onClick={handleLogout}
                   title="Sign out"
-                  className="ml-2 p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)]"
+                  className="shrink-0 p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)]"
                 >
                   <LogOut className="h-4 w-4" />
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowMfaModal(true)}
-                className="font-mono-tech flex w-full items-center justify-between border border-[var(--border-hair)] bg-[var(--bg-panel)] px-2.5 py-1.5 text-[10px] font-semibold uppercase hover:border-[var(--border-strong)]"
-              >
-                <span className="flex items-center gap-1.5">
-                  <Shield className="h-3 w-3 text-[var(--accent-cyan)]" />
-                  2FA SECURITY
-                </span>
-                <span
-                  className={
-                    user.mfa_enabled
-                      ? "text-[var(--accent-green)]"
-                      : "text-[var(--text-muted)]"
-                  }
+
+              <div className="space-y-1.5 border-t border-[var(--border-hair)] pt-2">
+                <div className="truncate text-[11px] font-medium text-[var(--text-main)]">
+                  {user.org_name || user.org_id}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <RoleBadge
+                    label={user.effective_role || user.role}
+                    color={user.custom_role_color}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => navigate(profileRoute)}
+                  className="font-mono-tech flex items-center justify-center gap-1.5 border border-[var(--border-hair)] bg-[var(--bg-panel)] px-2 py-1.5 text-[10px] font-semibold uppercase hover:border-[var(--border-strong)]"
                 >
-                  {user.mfa_enabled ? "ON" : "OPTIONAL"}
-                </span>
-              </button>
+                  <UserCog className="h-3 w-3 text-[var(--accent-cyan)]" />
+                  PROFILE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMfaModal(true)}
+                  className="font-mono-tech flex items-center justify-center gap-1.5 border border-[var(--border-hair)] bg-[var(--bg-panel)] px-2 py-1.5 text-[10px] font-semibold uppercase hover:border-[var(--border-strong)]"
+                >
+                  <Shield className="h-3 w-3 text-[var(--accent-cyan)]" />
+                  2FA:{user.mfa_enabled ? "ON" : "OPT"}
+                </button>
+              </div>
             </div>
           )}
         </div>
       </aside>
 
       <div className="flex-1">
-        <header className="border-b border-[var(--border-hair)] bg-[var(--bg-panel)]/85 px-5 py-5 backdrop-blur-sm lg:px-8">
+        <header className="border-b border-[var(--border-hair)] bg-[var(--bg-panel)] px-5 py-5 lg:px-8">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4">
             <div>
               <p className="font-mono-tech text-[10px] font-semibold tracking-[0.2em] text-[var(--accent-cyan)] uppercase">
@@ -308,6 +380,15 @@ export function PortalLayout({
             </div>
 
             <div className="flex items-center gap-2">
+              <NotificationBellAndDrawer />
+              <button
+                type="button"
+                onClick={() => navigate(profileRoute)}
+                className="font-mono-tech inline-flex items-center gap-1.5 border border-[var(--border-hair)] bg-[var(--bg-panel)] px-3 py-2 text-xs lg:hidden"
+              >
+                <UserCog className="h-3.5 w-3.5 text-[var(--accent-cyan)]" />
+                PROFILE
+              </button>
               <button
                 type="button"
                 onClick={() => setShowMfaModal(true)}
@@ -322,8 +403,9 @@ export function PortalLayout({
                   onClick={onRefresh}
                   className="font-mono-tech inline-flex items-center gap-2 border border-[var(--border-hair)] bg-[var(--bg-panel)] px-3.5 py-2 text-xs font-semibold hover:border-[var(--border-strong)]"
                 >
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-green)] animate-scan-pulse" />
                   <RefreshCw className="h-3.5 w-3.5" />
-                  SYNC
+                  LIVE SYNC
                 </button>
               )}
               <button

@@ -15,6 +15,7 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<LoginResult>;
   verifyMfa: (challengeToken: string, otpCode: string) => Promise<UserProfile>;
   applySessionToken: (token: string, profile: UserProfile) => void;
+  refreshUser: () => Promise<void>;
   logout: () => void;
 }
 
@@ -81,6 +82,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const refreshUser = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    try {
+      const profile = await api.me();
+      setUser(profile);
+    } catch {
+      // Preserve session unless explicitly logged out
+    }
+  }, []);
+
   const logout = useCallback(() => {
     setStoredToken(null);
     setUser(null);
@@ -88,7 +100,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, verifyMfa, applySessionToken, logout }}
+      value={{
+        user,
+        loading,
+        login,
+        verifyMfa,
+        applySessionToken,
+        refreshUser,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>

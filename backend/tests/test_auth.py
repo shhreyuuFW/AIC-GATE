@@ -21,6 +21,7 @@ from aic_gate.config import get_settings
 
 @pytest.fixture(autouse=True)
 def reset_caches(monkeypatch):
+    monkeypatch.setenv("AIC_GATE_IDENTITY_BACKEND", "memory")
     monkeypatch.delenv("AIC_GATE_ENV", raising=False)
     monkeypatch.delenv("AIC_GATE_JWT_SECRET", raising=False)
     monkeypatch.delenv("AIC_GATE_DEMO_USERS_ENABLED", raising=False)

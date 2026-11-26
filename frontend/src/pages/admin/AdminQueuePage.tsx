@@ -9,6 +9,7 @@ import {
   StatusBadge,
 } from "../../components/TacticalUI";
 import { api } from "../../lib/api";
+import { useAutoSync } from "../../hooks/useAutoSync";
 import type {
   AccessRequestItem,
   CreatedSessionWithCredentials,
@@ -39,26 +40,34 @@ export function AdminQueuePage() {
     tone: "info" | "success" | "error";
   } | null>(null);
 
-  const loadQueue = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.adminListRequests(
-        filter === "ALL" ? undefined : filter
-      );
-      setRequests(res.requests);
-    } catch (err) {
-      setNotice({
-        message: err instanceof Error ? err.message : "Failed to load queue",
-        tone: "error",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [filter]);
+  const loadQueue = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const res = await api.adminListRequests(
+          filter === "ALL" ? undefined : filter
+        );
+        setRequests(res.requests);
+      } catch (err) {
+        if (!silent) {
+          setNotice({
+            message:
+              err instanceof Error ? err.message : "Failed to load queue",
+            tone: "error",
+          });
+        }
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [filter]
+  );
 
   useEffect(() => {
-    loadQueue();
+    void loadQueue(false);
   }, [loadQueue]);
+
+  useAutoSync(() => loadQueue(true), 8000);
 
   const handleInspectPolicy = async (req: AccessRequestItem) => {
     if (inspectedPolicy?.requestId === req.request_id) {
@@ -213,7 +222,14 @@ export function AdminQueuePage() {
                         {req.bucket}/{req.prefix}
                       </span>
                       <span className="font-mono-tech text-[11px] text-[var(--text-muted)]">
-                        REQ:{req.request_id.slice(0, 8)} · BY:{req.requester_id}{" "}
+                        REQ:{req.request_id.slice(0, 8)} · BY:{" "}
+                        <strong className="text-[var(--text-main)]">
+                          {req.requester_display_name ||
+                            req.requester_username ||
+                            req.requester_id}
+                        </strong>
+                        {req.requester_username &&
+                          ` (@${req.requester_username})`}{" "}
                         · {req.duration_minutes}m
                       </span>
                     </div>

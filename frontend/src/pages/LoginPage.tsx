@@ -1,9 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
   Building2,
+  CheckCircle2,
+  Crown,
   KeyRound,
   Lock,
   Moon,
@@ -16,9 +18,16 @@ import {
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import { NoticeBanner } from "../components/TacticalUI";
+import { BrandLogo, NoticeBanner } from "../components/TacticalUI";
+import type { InviteLookupResponse, UserRole } from "../types/api";
 
 type AuthMode = "login" | "signup" | "register-org";
+
+function routeForRole(role: UserRole): string {
+  if (role === "platform_admin") return "/master";
+  if (role === "admin") return "/admin";
+  return "/client";
+}
 
 export function LoginPage() {
   const { user, login, verifyMfa, applySessionToken } = useAuth();
@@ -35,7 +44,12 @@ export function LoginPage() {
   const [orgName, setOrgName] = useState("");
   const [allowedDomain, setAllowedDomain] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [inviteMatch, setInviteMatch] = useState<InviteLookupResponse | null>(
+    null
+  );
+  const [inviteLookupError, setInviteLookupError] = useState(false);
   const [email, setEmail] = useState("");
+  const [emailManuallyEdited, setEmailManuallyEdited] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [department, setDepartment] = useState("Cloud Operations");
 
@@ -45,10 +59,40 @@ export function LoginPage() {
     tone: "error" | "success" | "info";
   } | null>(null);
 
+  useEffect(() => {
+    if (mode !== "signup") return;
+    const trimmed = inviteCode.trim();
+    if (trimmed.length < 4) {
+      setInviteMatch(null);
+      setInviteLookupError(false);
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await api.lookupInvite(trimmed);
+        setInviteMatch(res);
+        setInviteLookupError(false);
+      } catch {
+        setInviteMatch(null);
+        setInviteLookupError(true);
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [inviteCode, mode]);
+
+  useEffect(() => {
+    if (mode !== "signup" || !inviteMatch?.allowed_domain) return;
+    const domain = inviteMatch.allowed_domain;
+    if (!emailManuallyEdited && username.trim()) {
+      const cleanLocal = username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "");
+      if (cleanLocal) {
+        setEmail(`${cleanLocal}@${domain}`);
+      }
+    }
+  }, [username, inviteMatch, mode, emailManuallyEdited]);
+
   if (user) {
-    return (
-      <Navigate to={user.role === "admin" ? "/admin" : "/client"} replace />
-    );
+    return <Navigate to={routeForRole(user.role)} replace />;
   }
 
   const handleLoginSubmit = async (e: FormEvent) => {
@@ -64,7 +108,7 @@ export function LoginPage() {
           tone: "info",
         });
       } else {
-        navigate(res.user.role === "admin" ? "/admin" : "/client", {
+        navigate(routeForRole(res.user.role), {
           replace: true,
         });
       }
@@ -85,7 +129,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       const profile = await verifyMfa(mfaChallenge, otpCode);
-      navigate(profile.role === "admin" ? "/admin" : "/client", {
+      navigate(routeForRole(profile.role), {
         replace: true,
       });
     } catch (err) {
@@ -166,12 +210,10 @@ export function LoginPage() {
     <div className="endfield-grid-bg flex min-h-screen flex-col justify-between p-5 lg:p-10">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="endfield-chamfer-sm flex h-10 w-10 items-center justify-center bg-[var(--accent-volt)] font-mono-tech text-lg font-bold text-[var(--accent-volt-ink)]">
-            A
-          </div>
+          <BrandLogo size="lg" />
           <div>
             <span className="font-mono-tech text-sm font-bold tracking-widest">
-              AIC-GATE // V3
+              AIC-GATE // V4
             </span>
             <p className="font-mono-tech text-[10px] tracking-widest text-[var(--text-muted)] uppercase">
               MULTI-TENANT JIT CLOUD ACCESS GATEWAY
@@ -405,7 +447,7 @@ export function LoginPage() {
                   <span>LAB DEMO CREDENTIALS (ORG INVITE: LAB-AICGATE-2026)</span>
                   <span>JWT // TOTP</span>
                 </div>
-                <div className="grid gap-2.5 sm:grid-cols-2">
+                <div className="grid gap-2.5 sm:grid-cols-3">
                   <button
                     type="button"
                     onClick={() => quickFill("operator", "operator-demo-pass")}
@@ -432,7 +474,22 @@ export function LoginPage() {
                         commander
                       </div>
                       <div className="text-[11px] text-[var(--text-muted)]">
-                        Admin Approver
+                        Org Owner
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => quickFill("master", "master-demo-pass")}
+                    className="flex items-center gap-2.5 border border-[var(--border-hair)] bg-[var(--bg-elevated)] px-3 py-2 text-left hover:border-[var(--accent-green)]"
+                  >
+                    <Crown className="h-4 w-4 shrink-0 text-[var(--accent-green)]" />
+                    <div>
+                      <div className="font-mono-tech text-xs font-bold">
+                        master
+                      </div>
+                      <div className="text-[11px] text-[var(--text-muted)]">
+                        Platform Master
                       </div>
                     </div>
                   </button>
@@ -443,6 +500,25 @@ export function LoginPage() {
 
           {mode === "signup" && (
             <form onSubmit={handleMemberSignup} className="space-y-3">
+              {inviteMatch && (
+                <div className="flex items-center justify-between gap-2 border border-[var(--accent-green)]/50 bg-[var(--accent-green-soft)] px-3 py-2 text-xs">
+                  <span className="font-mono-tech flex items-center gap-1.5 font-bold text-[var(--accent-green)]">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    JOINING: {inviteMatch.org_name}
+                  </span>
+                  {inviteMatch.allowed_domain && (
+                    <span className="font-mono-tech text-[10px] text-[var(--text-muted)]">
+                      DOMAIN: @{inviteMatch.allowed_domain}
+                    </span>
+                  )}
+                </div>
+              )}
+              {inviteLookupError && inviteCode.trim().length >= 4 && (
+                <p className="font-mono-tech text-[10px] text-[var(--accent-red)]">
+                  INVITE CODE NOT RECOGNIZED
+                </p>
+              )}
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="font-mono-tech mb-1 block text-[10px] font-semibold uppercase">
@@ -478,8 +554,26 @@ export function LoginPage() {
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="user@aicgate.local"
+                    onChange={(e) => {
+                      setEmailManuallyEdited(true);
+                      setEmail(e.target.value);
+                    }}
+                    onBlur={() => {
+                      if (
+                        inviteMatch?.allowed_domain &&
+                        email.trim() &&
+                        !email.includes("@")
+                      ) {
+                        setEmail(
+                          `${email.trim().toLowerCase()}@${inviteMatch.allowed_domain}`
+                        );
+                      }
+                    }}
+                    placeholder={
+                      inviteMatch?.allowed_domain
+                        ? `user@${inviteMatch.allowed_domain}`
+                        : "user@aicgate.local"
+                    }
                     required
                     className="font-mono-tech w-full border border-[var(--border-hair)] bg-[var(--bg-elevated)] px-3 py-2 text-xs outline-none focus:border-[var(--accent-cyan)]"
                   />

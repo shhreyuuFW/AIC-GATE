@@ -118,6 +118,36 @@ body {
   animation: scan-pulse 2.2s ease-in-out infinite;
 }
 
+dialog.aic-alert-dialog {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  margin: 0;
+  padding: 0;
+  width: min(100vw, 440px);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  border: none;
+  border-left: 1px solid var(--border-strong);
+  background-color: var(--bg-panel);
+  color: var(--text-main);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+dialog.aic-alert-dialog::backdrop {
+  background: rgba(5, 8, 13, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+dialog.aic-alert-dialog[open] {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-scan-pulse {
     animation: none;

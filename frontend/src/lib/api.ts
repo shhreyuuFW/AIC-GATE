@@ -4,14 +4,24 @@ import type {
   AuditEventItem,
   CatalogResourceItem,
   CreatedSessionWithCredentials,
+  InviteLookupResponse,
   LoginResponse,
+  MasterOrgSummary,
   MemberAccount,
   MfaSetupResponse,
+  NotificationsResponse,
   ObjectReadResponse,
   OrganizationInfo,
+  OrgRoleItem,
   PolicyDocument,
+  ScopeTesterPresets,
+  ScopeTestResult,
   SecurityProofResponse,
+  ServiceType,
+  SupportTicketItem,
   TemporaryCredentials,
+  TicketCategory,
+  TicketStatus,
   UserProfile,
 } from "../types/api";
 
@@ -86,6 +96,14 @@ export const api = {
     return request<{ status: string }>("/health", {}, false);
   },
 
+  lookupInvite(inviteCode: string): Promise<InviteLookupResponse> {
+    return request<InviteLookupResponse>(
+      `/auth/invite/${encodeURIComponent(inviteCode.trim())}`,
+      {},
+      false
+    );
+  },
+
   login(username: string, password: string): Promise<LoginResponse> {
     return request<LoginResponse>(
       "/auth/login",
@@ -156,6 +174,31 @@ export const api = {
     return request<UserProfile>("/auth/me");
   },
 
+  updateProfile(payload: {
+    display_name?: string;
+    bio?: string;
+    avatar?: string;
+  }): Promise<{ access_token: string; user: UserProfile }> {
+    return request("/auth/profile", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getNotifications(): Promise<NotificationsResponse> {
+    return request<NotificationsResponse>("/notifications");
+  },
+
+  markNotificationsRead(payload: {
+    notification_id?: string;
+    mark_all?: boolean;
+  }): Promise<{ marked: number }> {
+    return request<{ marked: number }>("/notifications/read", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   setupMfa(): Promise<MfaSetupResponse> {
     return request<MfaSetupResponse>("/auth/mfa/setup", { method: "POST" });
   },
@@ -222,6 +265,16 @@ export const api = {
     return request<OrganizationInfo>("/admin/org");
   },
 
+  adminUpdateOrg(payload: {
+    org_name?: string;
+    allowed_domain?: string;
+  }): Promise<OrganizationInfo> {
+    return request<OrganizationInfo>("/admin/org", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
   adminRotateInvite(): Promise<OrganizationInfo> {
     return request<OrganizationInfo>("/admin/org/rotate-invite", {
       method: "POST",
@@ -243,6 +296,98 @@ export const api = {
         body: JSON.stringify({ decision }),
       }
     );
+  },
+
+  adminManageUser(
+    username: string,
+    payload: {
+      department?: string;
+      status?: "ACTIVE" | "SUSPENDED";
+      custom_role_id?: string;
+      clear_custom_role?: boolean;
+      admin_action?: "PROMOTE_DELEGATED" | "DEMOTE_REQUESTER";
+    }
+  ): Promise<MemberAccount> {
+    return request<MemberAccount>(
+      `/admin/users/${encodeURIComponent(username)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  adminListRoles(): Promise<{ roles: OrgRoleItem[] }> {
+    return request<{ roles: OrgRoleItem[] }>("/admin/org-roles");
+  },
+
+  adminCreateRole(payload: {
+    name: string;
+    description: string;
+    color: string;
+  }): Promise<OrgRoleItem> {
+    return request<OrgRoleItem>("/admin/org-roles", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  adminUpdateRole(
+    roleId: string,
+    payload: { name?: string; description?: string; color?: string }
+  ): Promise<OrgRoleItem> {
+    return request<OrgRoleItem>(
+      `/admin/org-roles/${encodeURIComponent(roleId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  adminDeleteRole(roleId: string): Promise<{ deleted: string }> {
+    return request<{ deleted: string }>(
+      `/admin/org-roles/${encodeURIComponent(roleId)}`,
+      { method: "DELETE" }
+    );
+  },
+
+  adminAssignRole(
+    roleId: string,
+    usernames: string[]
+  ): Promise<{ updated: MemberAccount[] }> {
+    return request<{ updated: MemberAccount[] }>(
+      `/admin/org-roles/${encodeURIComponent(roleId)}/assign`,
+      {
+        method: "POST",
+        body: JSON.stringify({ usernames }),
+      }
+    );
+  },
+
+  adminUnassignRoles(
+    usernames: string[]
+  ): Promise<{ updated: MemberAccount[] }> {
+    return request<{ updated: MemberAccount[] }>("/admin/org-roles/unassign", {
+      method: "POST",
+      body: JSON.stringify({ usernames }),
+    });
+  },
+
+  adminListTickets(): Promise<{ tickets: SupportTicketItem[] }> {
+    return request<{ tickets: SupportTicketItem[] }>("/admin/tickets");
+  },
+
+  adminCreateTicket(payload: {
+    category: TicketCategory;
+    subject: string;
+    description: string;
+    requested_value?: string;
+  }): Promise<SupportTicketItem> {
+    return request<SupportTicketItem>("/admin/tickets", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 
   adminListRequests(status?: string): Promise<{ requests: AccessRequestItem[] }> {
@@ -299,6 +444,23 @@ export const api = {
     );
   },
 
+  getScopeTesterPresets(): Promise<{ presets: ScopeTesterPresets }> {
+    return request<{ presets: ScopeTesterPresets }>("/scope-tester/presets");
+  },
+
+  runSessionScopeTest(
+    sessionId: string,
+    payload: { service: ServiceType; query: string; use_lab_sample?: boolean }
+  ): Promise<ScopeTestResult> {
+    return request<ScopeTestResult>(
+      `/sessions/${encodeURIComponent(sessionId)}/test`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
   adminAudit(limit = 100): Promise<{ events: AuditEventItem[] }> {
     return request<{ events: AuditEventItem[] }>(
       `/admin/audit?limit=${encodeURIComponent(String(limit))}`
@@ -328,5 +490,83 @@ export const api = {
     return request<SecurityProofResponse>("/admin/security-proof", {
       method: "POST",
     });
+  },
+
+  masterListOrgs(): Promise<{ organizations: MasterOrgSummary[] }> {
+    return request<{ organizations: MasterOrgSummary[] }>("/master-api/orgs");
+  },
+
+  masterUpdateOrg(
+    orgId: string,
+    payload: {
+      org_name?: string;
+      allowed_domain?: string;
+      status?: "ACTIVE" | "SUSPENDED";
+    }
+  ): Promise<OrganizationInfo> {
+    return request<OrganizationInfo>(
+      `/master-api/orgs/${encodeURIComponent(orgId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  masterListOrgUsers(orgId: string): Promise<{ users: MemberAccount[] }> {
+    return request<{ users: MemberAccount[] }>(
+      `/master-api/orgs/${encodeURIComponent(orgId)}/users`
+    );
+  },
+
+  masterSetOrgAdmin(
+    orgId: string,
+    username: string,
+    tier: "delegated" | "owner" | "none"
+  ): Promise<MemberAccount> {
+    return request<MemberAccount>(
+      `/master-api/orgs/${encodeURIComponent(orgId)}/admins`,
+      {
+        method: "POST",
+        body: JSON.stringify({ username, tier }),
+      }
+    );
+  },
+
+  masterResetUserMfa(username: string): Promise<MemberAccount> {
+    return request<MemberAccount>(
+      `/master-api/users/${encodeURIComponent(username)}/reset-mfa`,
+      { method: "POST" }
+    );
+  },
+
+  masterListTickets(status?: string): Promise<{ tickets: SupportTicketItem[] }> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    return request<{ tickets: SupportTicketItem[] }>(
+      `/master-api/tickets${query}`
+    );
+  },
+
+  masterUpdateTicket(
+    ticketId: string,
+    payload: {
+      status: TicketStatus;
+      resolution_note?: string;
+      apply_org_rename?: boolean;
+    }
+  ): Promise<SupportTicketItem> {
+    return request<SupportTicketItem>(
+      `/master-api/tickets/${encodeURIComponent(ticketId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  masterAudit(limit = 150): Promise<{ events: AuditEventItem[] }> {
+    return request<{ events: AuditEventItem[] }>(
+      `/master-api/audit?limit=${encodeURIComponent(String(limit))}`
+    );
   },
 };

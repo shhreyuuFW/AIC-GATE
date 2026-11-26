@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { ShieldCheck, ShieldOff, X } from "lucide-react";
 import { api } from "../lib/api";
@@ -82,8 +83,11 @@ export function MfaSettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-xs">
+  const content = (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9995 }}
+      className="flex items-center justify-center bg-black/65 p-4 backdrop-blur-xs"
+    >
       <div className="endfield-panel relative w-full max-w-md p-6">
         <div className="mb-4 flex items-center justify-between border-b border-[var(--border-hair)] pb-3">
           <div>
@@ -203,4 +207,8 @@ export function MfaSettingsModal({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   );
+
+  return typeof document !== "undefined"
+    ? createPortal(content, document.body)
+    : content;
 }

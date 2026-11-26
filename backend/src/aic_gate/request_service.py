@@ -31,11 +31,15 @@ def submit_access_request_record(
     request: AccessRequest,
     requester_id: str,
     org_id: str = DEFAULT_LAB_ORG_ID,
+    requester_username: str = "",
+    requester_display_name: str = "",
 ):
     record = create_access_request(
         request=request,
         requester_id=requester_id,
         org_id=org_id,
+        requester_username=requester_username,
+        requester_display_name=requester_display_name,
     )
     save_access_request(record)
     return record

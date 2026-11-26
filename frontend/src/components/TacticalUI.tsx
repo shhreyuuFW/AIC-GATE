@@ -1,7 +1,71 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Check, Copy, Eye, EyeOff, KeyRound, ShieldAlert } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Cpu,
+  Crown,
+  Eye,
+  EyeOff,
+  Hexagon,
+  KeyRound,
+  Lock,
+  Radar,
+  Shield,
+  ShieldAlert,
+  Terminal,
+  Zap,
+} from "lucide-react";
 import type { ServiceType, TemporaryCredentials } from "../types/api";
+
+export function BrandLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
+  const cls =
+    size === "sm"
+      ? "h-9 w-9 p-1.5"
+      : size === "lg"
+        ? "h-11 w-11 p-1.5"
+        : "h-10 w-10 p-1.5";
+  return (
+    <div
+      className={`${cls} endfield-chamfer-sm flex shrink-0 items-center justify-center border border-[var(--border-strong)] bg-[#090c11]`}
+    >
+      <svg
+        viewBox="0 0 100 100"
+        fill="none"
+        className="h-full w-full"
+        aria-label="AIC-GATE emblem"
+      >
+        <path
+          d="M 67 15.8 L 50 6 L 12 28 L 12 72 L 50 94 L 88 72 L 88 28 L 76 21"
+          stroke="#EDF2F7"
+          strokeWidth="6.5"
+          strokeLinecap="butt"
+          strokeLinejoin="miter"
+        />
+        <line
+          x1="69.5"
+          y1="22.8"
+          x2="74.5"
+          y2="14.2"
+          stroke="#EDF2F7"
+          strokeWidth="2.6"
+        />
+        <path
+          d="M 45.5 29 L 54.5 29 L 73 67 L 63.2 69.8 L 57.6 58.2 L 50.8 58.2 L 50.8 49.5 L 53.6 49.5 L 50 40.5 L 38.2 62.5 L 30.8 57.5 Z"
+          fill="#EDF2F7"
+        />
+        <path
+          d="M 49.2 49.5 L 49.2 58.2 L 41.2 58.2 L 45.5 49.5 Z"
+          fill="#EDF2F7"
+        />
+        <polygon
+          points="29,61 36.8,65.5 32.3,73.3 24.5,68.8"
+          fill="#E5FF00"
+        />
+      </svg>
+    </div>
+  );
+}
 
 export function ServiceBadge({ service }: { service?: ServiceType | string }) {
   const norm = (service || "s3").toLowerCase();
@@ -63,6 +127,16 @@ export function StatusBadge({ status }: { status: string }) {
       "bg-[var(--accent-red-soft)] text-[var(--accent-red)] border-[var(--accent-red)]/40",
     FAILED:
       "bg-[var(--accent-red-soft)] text-[var(--accent-red)] border-[var(--accent-red)]/40",
+    SUSPENDED:
+      "bg-[var(--accent-red-soft)] text-[var(--accent-red)] border-[var(--accent-red)]/40",
+    OPEN:
+      "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)] border-[var(--accent-amber)]/40",
+    IN_REVIEW:
+      "bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)] border-[var(--accent-cyan)]/40",
+    RESOLVED:
+      "bg-[var(--accent-green-soft)] text-[var(--accent-green)] border-[var(--accent-green)]/40",
+    CLOSED:
+      "bg-[var(--bg-muted)] text-[var(--text-muted)] border-[var(--border-strong)]/40",
     LOW:
       "bg-[var(--accent-green-soft)] text-[var(--accent-green)] border-[var(--accent-green)]/40",
     MEDIUM:
@@ -400,6 +474,117 @@ export function CredentialVault({
           credentials expire automatically at STS_EXPIRATION.
         </span>
       </div>
+    </div>
+  );
+}
+
+const ROLE_COLOR_CLASSES: Record<string, string> = {
+  cyan: "border-[var(--accent-cyan)]/50 bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)]",
+  amber:
+    "border-[var(--accent-amber)]/50 bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]",
+  green:
+    "border-[var(--accent-green)]/50 bg-[var(--accent-green-soft)] text-[var(--accent-green)]",
+  volt: "border-[var(--text-main)] bg-[var(--accent-volt)] text-[var(--accent-volt-ink)]",
+  red: "border-[var(--accent-red)]/50 bg-[var(--accent-red-soft)] text-[var(--accent-red)]",
+  slate:
+    "border-[var(--border-strong)] bg-[var(--bg-panel)] text-[var(--text-muted)]",
+};
+
+export function RoleBadge({
+  label,
+  color = "cyan",
+}: {
+  label: string;
+  color?: string;
+}) {
+  const cls = ROLE_COLOR_CLASSES[color] ?? ROLE_COLOR_CLASSES.cyan;
+  return (
+    <span
+      className={`font-mono-tech inline-flex items-center border px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase ${cls}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+export const AVATAR_PRESETS = [
+  { id: "shield", label: "Shield" },
+  { id: "terminal", label: "Terminal" },
+  { id: "hex", label: "Hex Node" },
+  { id: "cyber", label: "Volt Core" },
+  { id: "radar", label: "Radar" },
+  { id: "crown", label: "Command" },
+  { id: "cpu", label: "Processor" },
+  { id: "lock", label: "Vault" },
+] as const;
+
+export function UserAvatar({
+  avatar,
+  displayName,
+  size = "md",
+}: {
+  avatar?: string;
+  displayName: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const sizeClass =
+    size === "sm"
+      ? "h-7 w-7 text-[10px]"
+      : size === "lg"
+        ? "h-12 w-12 text-sm"
+        : "h-9 w-9 text-xs";
+  const iconClass =
+    size === "sm" ? "h-3.5 w-3.5" : size === "lg" ? "h-6 w-6" : "h-4 w-4";
+
+  if (avatar && avatar.startsWith("data:image/")) {
+    return (
+      <img
+        src={avatar}
+        alt={displayName}
+        className={`${sizeClass} endfield-chamfer-sm shrink-0 border border-[var(--border-strong)] object-cover`}
+      />
+    );
+  }
+
+  const preset = avatar?.startsWith("preset:")
+    ? avatar.slice("preset:".length)
+    : "";
+
+  const renderPresetIcon = () => {
+    switch (preset) {
+      case "shield":
+        return <Shield className={iconClass} />;
+      case "terminal":
+        return <Terminal className={iconClass} />;
+      case "hex":
+        return <Hexagon className={iconClass} />;
+      case "cyber":
+        return <Zap className={iconClass} />;
+      case "radar":
+        return <Radar className={iconClass} />;
+      case "crown":
+        return <Crown className={iconClass} />;
+      case "cpu":
+        return <Cpu className={iconClass} />;
+      case "lock":
+        return <Lock className={iconClass} />;
+      default: {
+        const initials = displayName
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0]?.toUpperCase() || "")
+          .join("");
+        return <span>{initials || "AG"}</span>;
+      }
+    }
+  };
+
+  return (
+    <div
+      className={`${sizeClass} endfield-chamfer-sm font-mono-tech flex shrink-0 items-center justify-center border border-[var(--border-strong)] bg-[var(--bg-panel)] font-bold text-[var(--accent-cyan)]`}
+    >
+      {renderPresetIcon()}
     </div>
   );
 }
